@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agent Search — Zillow + Courted</title>
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+    <header class="topbar">
+        <div class="brand">
+            <span class="logo">◎</span>
+            <div>
+                <h1>Agent Search</h1>
+                <p>Zillow + Courted · live data pull</p>
+            </div>
+        </div>
+        <div class="env" id="env"></div>
+    </header>
+
+    <main>
+        <section class="search-card">
+            <label class="field">
+                <span>Locations or ZIP codes</span>
+                <textarea id="locations" rows="3"
+                    placeholder="One per line or comma-separated&#10;e.g. Miami, FL&#10;Boca Raton, FL&#10;33139"></textarea>
+            </label>
+
+            <div class="sources">
+                <label class="chk"><input type="checkbox" id="src-courted" checked /> <b>Courted</b> <span class="hint">fast</span></label>
+                <label class="chk"><input type="checkbox" id="src-zillow" checked /> <b>Zillow</b> <span class="hint">slower · proxy</span></label>
+            </div>
+
+            <details class="options">
+                <summary>Options</summary>
+                <div class="opt-grid">
+                    <label class="field small">
+                        <span>Courted max results <span class="hint">(0 = all)</span></span>
+                        <input type="number" id="courtedMax" value="0" min="0" />
+                    </label>
+                    <label class="field small">
+                        <span>Min LTM sales volume ($)</span>
+                        <input type="number" id="minSalesVolume" value="0" min="0" />
+                    </label>
+                    <label class="chk small"><input type="checkbox" id="courtedEnrich" /> Courted enrich (mobile, office address…)</label>
+                    <label class="field small">
+                        <span>Zillow max pages / location <span class="hint">(max 25)</span></span>
+                        <input type="number" id="zillowMaxPages" value="25" min="1" max="25" />
+                    </label>
+                    <label class="field small">
+                        <span>Zillow concurrency <span class="hint">(4 safe · higher = faster/riskier)</span></span>
+                        <input type="number" id="zillowConcurrency" value="4" min="1" max="12" />
+                    </label>
+                    <label class="chk small"><input type="checkbox" id="zillowEnrich" /> Zillow enrich (profile pages — phone, email, license)</label>
+                </div>
+            </details>
+
+            <button id="searchBtn" class="primary">Search</button>
+        </section>
+
+        <section class="results">
+            <div class="panel" id="panel-courted">
+                <div class="panel-head">
+                    <h2>Courted <span class="pill" id="status-courted">idle</span></h2>
+                    <div class="panel-actions">
+                        <span class="count" id="count-courted">0</span>
+                        <button class="ghost" data-export="courted" disabled>Export CSV</button>
+                    </div>
+                </div>
+                <div class="msg" id="msg-courted"></div>
+                <div class="table-wrap"><table id="table-courted"><thead></thead><tbody></tbody></table></div>
+            </div>
+
+            <div class="panel" id="panel-zillow">
+                <div class="panel-head">
+                    <h2>Zillow <span class="pill" id="status-zillow">idle</span></h2>
+                    <div class="panel-actions">
+                        <span class="count" id="count-zillow">0</span>
+                        <button class="ghost" data-export="zillow" disabled>Export CSV</button>
+                    </div>
+                </div>
+                <div class="msg" id="msg-zillow"></div>
+                <div class="table-wrap"><table id="table-zillow"><thead></thead><tbody></tbody></table></div>
+            </div>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>

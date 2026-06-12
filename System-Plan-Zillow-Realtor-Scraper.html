@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lead Scraping System — Architecture &amp; Plan</title>
+<style>
+  :root {
+    --blue: #006aff;
+    --blue-d: #0048b3;
+    --ink: #1a1a2e;
+    --muted: #5a6472;
+    --line: #e4e8ee;
+    --bg: #f6f8fb;
+    --card: #ffffff;
+    --code-bg: #f0f3f8;
+    --green: #0a8a4a;
+    --amber: #b06f00;
+    --purple: #6b3fc4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink); background: var(--bg); margin: 0; line-height: 1.6;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 48px 28px 90px; }
+  header.hero {
+    background: linear-gradient(135deg, #006aff 0%, #0048b3 100%);
+    color: #fff; border-radius: 16px; padding: 42px 38px; margin-bottom: 36px;
+  }
+  header.hero h1 { margin: 0 0 8px; font-size: 30px; letter-spacing: -0.5px; }
+  header.hero p { margin: 0; opacity: 0.92; font-size: 16px; max-width: 760px; }
+  .pill { display:inline-block; background: rgba(255,255,255,0.18); padding: 3px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; margin-bottom: 14px; letter-spacing: 0.4px; }
+  h2 { font-size: 22px; margin: 44px 0 14px; padding-bottom: 8px; border-bottom: 2px solid var(--line); letter-spacing: -0.3px; }
+  h3 { font-size: 17px; margin: 24px 0 8px; }
+  p { margin: 10px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 22px 26px; margin: 16px 0; }
+  code { background: var(--code-bg); padding: 2px 6px; border-radius: 5px; font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 13px; color: #b3005f; }
+  pre { background: #1a1f2b; color: #e6edf3; padding: 18px 20px; border-radius: 10px; overflow-x: auto; font-size: 12.5px; line-height: 1.5; }
+  pre code { background: none; color: inherit; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--bg); font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+  tr:hover td { background: #fafcff; }
+  .muted { color: var(--muted); }
+  .tag { display:inline-block; font-size: 11px; font-weight:700; padding: 2px 8px; border-radius: 5px; }
+  .tag-fe { background: #e3f0ff; color: #0048b3; }
+  .tag-be { background: #e9f9ef; color: var(--green); }
+  .tag-ap { background: #f1ebff; color: var(--purple); }
+  .tag-db { background: #fff1e6; color: var(--amber); }
+  .steps { counter-reset: step; list-style: none; padding: 0; margin: 0; }
+  .steps li { position: relative; padding: 14px 0 14px 58px; border-bottom: 1px dashed var(--line); }
+  .steps li:last-child { border-bottom: none; }
+  .steps li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: 0; top: 12px; width: 36px; height: 36px;
+    background: var(--blue); color: #fff; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px;
+  }
+  .steps li b { display:block; margin-bottom: 2px; }
+  .note { border-left: 4px solid var(--amber); background: #fff8ec; padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 14px 0; font-size: 14px; }
+  .note.blue { border-left-color: var(--blue); background: #eef5ff; }
+  .note.green { border-left-color: var(--green); background: #eefaf2; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px){ .grid2, .grid3 { grid-template-columns: 1fr; } }
+  .kv { font-size: 14px; }
+  .kv b { color: var(--blue); }
+  .layer { border-radius: 12px; padding: 16px 18px; margin: 10px 0; border: 1px solid var(--line); }
+  .layer h3 { margin: 0 0 6px; font-size: 15px; }
+  .layer.fe { background: #f4f9ff; }
+  .layer.be { background: #f3fbf6; }
+  .layer.ap { background: #f8f5ff; }
+  .layer.db { background: #fff9f2; }
+  footer { margin-top: 54px; text-align: center; color: var(--muted); font-size: 13px; }
+  ul.clean { margin: 8px 0; padding-left: 20px; }
+  ul.clean li { margin: 4px 0; }
+  .badge-row { display:flex; gap:8px; flex-wrap:wrap; margin: 6px 0 0; }
+  @media print { body { background:#fff; } .card, header.hero { box-shadow:none; } pre { white-space: pre-wrap; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="pill">SYSTEM PLAN · v1</div>
+    <h1>Real-Estate Lead Scraping System</h1>
+    <p>A web app where the client searches a ZIP code or location, runs Zillow &amp; Realtor.com scrapers (Apify actors)
+       on demand, and gets the results saved into their own system — searchable, viewable, and exportable.</p>
+  </header>
+
+  <h2>1. Goal &amp; scope</h2>
+  <div class="card">
+    <p>Build a self-serve tool for the client with a simple flow: <b>type a location → pick a source → start scraping → get saved leads.</b></p>
+    <ul class="clean">
+      <li><b>Search input:</b> ZIP code or location name (city / neighborhood).</li>
+      <li><b>Sources:</b> Zillow (actor already built ✅) and Realtor.com (actor to be built).</li>
+      <li><b>Trigger:</b> the UI starts the matching Apify actor run for that search.</li>
+      <li><b>Storage:</b> every scraped record is saved into the client's own database, tied to the search that produced it.</li>
+      <li><b>Output:</b> client can browse, filter, and export the saved leads (CSV / Excel).</li>
+    </ul>
+  </div>
+
+  <h2>2. The big picture</h2>
+  <div class="card">
+    <div class="layer fe">
+      <h3>① Frontend UI <span class="tag tag-fe">CLIENT FACING</span></h3>
+      Search form (location + source), "Start Scraping" button, live run status, results table, export buttons, run history.
+    </div>
+    <div class="layer be">
+      <h3>② Backend API <span class="tag tag-be">OUR SERVER</span></h3>
+      Receives the search, starts the right Apify actor, tracks the run, pulls results when finished, and saves them to the database.
+    </div>
+    <div class="layer ap">
+      <h3>③ Apify Actors <span class="tag tag-ap">SCRAPERS</span></h3>
+      Zillow actor + Realtor.com actor. They do the actual scraping on Apify's cloud (with residential proxies, anti-bot handling, etc.) and write results to an Apify Dataset.
+    </div>
+    <div class="layer db">
+      <h3>④ Database <span class="tag tag-db">CLIENT'S DATA</span></h3>
+      Stores users, searches/runs, and every scraped lead. This is the "saved in his system" part — data persists even after the Apify run is gone.
+    </div>
+  </div>
+
+  <h2>3. How a scrape works — end to end</h2>
+  <div class="card">
+    <ol class="steps">
+      <li><b>Client searches</b> — enters a ZIP/location, selects Zillow and/or Realtor.com, sets options (e.g. max pages, enrich profiles), clicks <i>Start Scraping</i>.</li>
+      <li><b>Backend creates a "Run" record</b> in the database (status = <code>RUNNING</code>) and calls the <b>Apify API</b> to start the chosen actor with the search input.</li>
+      <li><b>Apify runs the actor</b> on its cloud — scrolling pages, handling captchas/proxies, parsing each listing/agent into structured records, and pushing them to that run's <b>Dataset</b>.</li>
+      <li><b>Apify notifies the backend</b> when the run finishes — via a <b>webhook</b> (preferred) or the backend <b>polls</b> the run status.</li>
+      <li><b>Backend fetches the dataset</b> from Apify (the full list of scraped records) using the Apify API.</li>
+      <li><b>Backend saves the leads</b> into the database, linked to that Run, de-duplicating against existing records.</li>
+      <li><b>UI updates</b> — the run shows <code>COMPLETED</code> with a result count; the client can view, filter, and export the leads.</li>
+    </ol>
+  </div>
+
+  <div class="note blue">
+    <b>Key point on "the data comes from Apify":</b> yes — Apify is where the scraping happens and where results first land (the Dataset). Our backend then <b>copies that data into the client's own database</b> so it's permanent, searchable, and independent of Apify's storage retention.</div>
+
+  <div class="note green">
+    <b>Apify model — rented actors:</b> we publish both actors on the Apify Store as <b>rental (paid) actors</b>. The client <b>rents them from their own Apify account</b> — they pay a monthly rental fee for access plus their own Apify platform usage (proxies + compute). Nothing scraping-related is billed to us; everything runs under the client's account. The backend triggers runs using the client's API token (stored securely server-side).
+  </div>
+
+  <h2>4. Data flow diagram</h2>
+  <pre><code>  ┌─────────────┐   1. search (zip/location, source, options)
+  │  FRONTEND   │ ───────────────────────────────────────────────┐
+  │   (UI)      │ ◄── 7. status + saved leads ──────────────┐     │
+  └─────────────┘                                           │     ▼
+                                                       ┌──────────────┐
+                                                       │   BACKEND    │
+                              6. save leads  ◄─────────│     API      │
+                          ┌──────────────┐   2. start run│            │
+                          │   DATABASE   │◄──────────────│            │
+                          │ users / runs │               └────┬─▲─────┘
+                          │   / leads    │       2. POST /acts │ │ 4. webhook
+                          └──────────────┘        start actor  │ │   "run finished"
+                                                                ▼ │
+                                                       ┌──────────────┐
+                                                       │    APIFY     │
+                                                       │  Zillow actor│ 3. scrape →
+                                                       │ Realtor actor│    Dataset
+                                                       └──────────────┘
+                                       5. GET dataset items (backend pulls results)</code></pre>
+
+  <h2>5. Components in detail</h2>
+
+  <h3>Frontend UI <span class="tag tag-fe">React / Next.js</span></h3>
+  <div class="card kv">
+    <ul class="clean">
+      <li><b>Search page:</b> location input (ZIP or name), source toggle (Zillow / Realtor.com / both), advanced options (max pages, enrich profiles, max profiles).</li>
+      <li><b>Run status:</b> live progress — "Scraping… 120 found so far", with states <code>QUEUED → RUNNING → COMPLETED / FAILED</code>.</li>
+      <li><b>Results table:</b> paginated, sortable, filterable (by city, rating, has-phone, source, etc.).</li>
+      <li><b>Export:</b> download current view as CSV / Excel.</li>
+      <li><b>History:</b> list of past searches/runs with counts and timestamps; re-open or re-run.</li>
+    </ul>
+  </div>
+
+  <h3>Backend API <span class="tag tag-be">Node.js (Express/Nest) or Next API routes</span></h3>
+  <div class="card kv">
+    <p>Holds the <b>client's Apify API token</b> (stored server-side, never exposed to the browser), orchestrates runs, and persists data.</p>
+    <table>
+      <thead><tr><th>Endpoint</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>POST /api/scrape</code></td><td>Start a scrape — creates a Run, calls Apify to start the actor</td></tr>
+        <tr><td><code>GET /api/runs</code></td><td>List the client's runs (history) with status + counts</td></tr>
+        <tr><td><code>GET /api/runs/:id</code></td><td>Run detail + live status</td></tr>
+        <tr><td><code>POST /api/webhooks/apify</code></td><td>Apify calls this when a run finishes → backend pulls + saves data</td></tr>
+        <tr><td><code>GET /api/leads</code></td><td>Query saved leads (filter / paginate / search)</td></tr>
+        <tr><td><code>GET /api/leads/export</code></td><td>Stream CSV / Excel of filtered leads</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Apify Actors <span class="tag tag-ap">the scrapers</span></h3>
+  <p>Two ready-made Apify actors do the scraping — one for each source. Both take a location input and output structured records to an Apify Dataset.</p>
+  <div class="grid2">
+    <div class="card kv">
+      <h3>Zillow actor</h3>
+      <p>Searches agents by location, scrapes the results list, and optionally enriches each profile. Outputs structured agent records to a Dataset.</p>
+    </div>
+    <div class="card kv">
+      <h3>Realtor.com actor</h3>
+      <p>Takes a location input → scrapes Realtor.com listings/agents → outputs structured records to a Dataset, the same way the Zillow actor does.</p>
+    </div>
+  </div>
+  <div class="note">
+    <b>Standardize the output:</b> both actors should emit a <b>common field set</b> (name, contact, location, source, source URL, …) so the database and UI treat all leads uniformly regardless of source. A <code>source</code> column (<code>zillow</code> / <code>realtor</code>) distinguishes them.
+  </div>
+
+  <h3>Database <span class="tag tag-db">PostgreSQL (e.g. Supabase)</span></h3>
+  <div class="card kv">
+    <p>Three core tables. Supabase is a good fit since it gives Postgres + auth + an API out of the box.</p>
+    <pre><code>users            ── id, email, name, created_at
+
+runs             ── id, user_id, source ('zillow'|'realtor'),
+                    location, options(jsonb),
+                    apify_run_id, status, result_count,
+                    started_at, finished_at
+
+leads            ── id, run_id, user_id, source,
+                    name, brokerage, phone, email,
+                    rating, review_count,
+                    location, city, state, zip,
+                    profile_url, photo_url,
+                    raw(jsonb),            -- full original record
+                    created_at
+                    UNIQUE(user_id, source, profile_url)  -- de-dupe</code></pre>
+  </div>
+
+  <h2>6. Tech stack (recommended)</h2>
+  <table>
+    <thead><tr><th>Layer</th><th>Choice</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Frontend</td><td>Next.js + React + Tailwind</td><td>Fast to build, one codebase can host the API routes too</td></tr>
+      <tr><td>Backend</td><td>Next.js API routes / Node (Express)</td><td>Holds Apify token, orchestrates runs, talks to DB</td></tr>
+      <tr><td>Database + Auth</td><td>Supabase (Postgres)</td><td>Managed Postgres, built-in auth, instant REST/realtime</td></tr>
+      <tr><td>Scraping</td><td>Apify actors (Playwright + Crawlee)</td><td><b>Rented</b> from the Apify Store by the client; usage billed to their account</td></tr>
+      <tr><td>Hosting</td><td>Vercel (app) + Supabase (data)</td><td>Simple deploy, scales, low ops overhead</td></tr>
+    </tbody>
+  </table>
+
+  <h2>7. Integration with Apify (the important bit)</h2>
+  <div class="card kv">
+    <p><b>Start a run</b> — backend calls Apify with the actor ID and the search as input:</p>
+    <pre><code>POST https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token=APIFY_TOKEN
+{
+  "locations": ["80542"],        // or ["Boulder, CO"]
+  "enrichProfiles": true,
+  "maxPages": 5
+}
+// → returns { data: { id: RUN_ID, defaultDatasetId: DATASET_ID, ... } }</code></pre>
+    <p><b>Get results</b> when finished:</p>
+    <pre><code>GET https://api.apify.com/v2/datasets/{DATASET_ID}/items?token=APIFY_TOKEN
+// → array of scraped lead records → save to DB</code></pre>
+    <p><b>Get notified</b> — register a webhook so Apify pings the backend the moment a run succeeds, instead of polling:</p>
+    <pre><code>eventTypes: ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED"]
+requestUrl:  https://yourapp.com/api/webhooks/apify</code></pre>
+  </div>
+
+  <div class="note green">
+    <b>Two ways to know a run finished</b> — use <b>webhooks</b> for production (instant, efficient). Keep <b>polling</b> (<code>GET /v2/actor-runs/{id}</code> every few seconds) as a simple fallback for early development.
+  </div>
+
+  <h2>8. Build phases</h2>
+  <div class="card">
+    <ol class="steps">
+      <li><b>Phase 1 — Foundation:</b> set up DB schema (users/runs/leads), Supabase auth, and the backend skeleton with the Apify token.</li>
+      <li><b>Phase 2 — Zillow end-to-end:</b> wire the UI search → start the Zillow actor → save results → show in a table + export. Proves the whole pipeline.</li>
+      <li><b>Phase 3 — Add Realtor.com:</b> plug in the Realtor.com actor, standardize its output fields, and add the source selector + unified leads view across both sources.</li>
+      <li><b>Phase 4 — Polish:</b> run history, filtering, de-dupe, error handling, webhooks, usage limits.</li>
+    </ol>
+  </div>
+
+  <h2>9. Things to decide / watch</h2>
+  <div class="grid2">
+    <div class="card kv">
+      <h3>Decisions needed</h3>
+      <ul class="clean">
+        <li>Single client or multiple users/accounts?</li>
+        <li>Rental price &amp; terms for each actor (monthly fee, trial?).</li>
+        <li>Any limits (max scrapes/day, max pages) to control proxy cost?</li>
+        <li>Export format priorities (CSV, Excel, Google Sheets, CRM push?).</li>
+      </ul>
+    </div>
+    <div class="card kv">
+      <h3>Watch-outs</h3>
+      <ul class="clean">
+        <li><b>Cost:</b> residential proxy + compute is billed per run — surface estimated cost / result counts.</li>
+        <li><b>Long runs:</b> big locations can take minutes — UI must handle async, not block.</li>
+        <li><b>De-dupe:</b> same agent across ZIPs/sources — unique key on profile URL.</li>
+        <li><b>Compliance:</b> respect each site's terms; this is for the client's authorized use.</li>
+      </ul>
+    </div>
+  </div>
+
+  <footer>
+    Real-Estate Lead Scraping System · System Plan · Generated 2026-06-08
+  </footer>
+
+</div>
+</body>
+</html>

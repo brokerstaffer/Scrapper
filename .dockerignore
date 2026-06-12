@@ -1,0 +1,9 @@
+.git
+.DS_Store
+node_modules
+storage
+apify_storage
+crawlee_storage
+*.log
+test
+ZILLOW APIFY ACTOR — Claude Code Project Brief.txt

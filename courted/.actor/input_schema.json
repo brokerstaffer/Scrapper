@@ -1,0 +1,117 @@
+{
+    "title": "Courted Agent Scraper",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+        "email": {
+            "title": "Courted email",
+            "type": "string",
+            "description": "Login email for your Courted account.",
+            "editor": "textfield"
+        },
+        "password": {
+            "title": "Courted password",
+            "type": "string",
+            "description": "Login password for your Courted account. Stored as a secret.",
+            "editor": "textfield",
+            "isSecret": true
+        },
+        "locations": {
+            "title": "Locations",
+            "type": "array",
+            "description": "Cities (\"Miami, FL\") or 5-digit ZIPs (\"33139\") to scrape. Leave empty to sweep ALL agents (196k+).",
+            "editor": "stringList",
+            "prefill": ["Miami, FL"]
+        },
+        "orderBy": {
+            "title": "Order by",
+            "type": "string",
+            "description": "Field to sort results by.",
+            "editor": "select",
+            "default": "ltm_sales_volume",
+            "enum": [
+                "ltm_sales_volume",
+                "ltm_est_gci",
+                "ltm_avg_sale_price",
+                "ltm_closed_transactions",
+                "ltm_closed_units",
+                "agent_tenure",
+                "active_listings",
+                "pending_listings",
+                "ytd_sales_volume",
+                "sales_volume_prediction"
+            ],
+            "enumTitles": [
+                "LTM Sales Volume",
+                "LTM Est GCI",
+                "LTM Avg Sale Price",
+                "LTM Closed Transactions",
+                "LTM Closed Units",
+                "Agent Tenure",
+                "Active Listings",
+                "Pending Listings",
+                "YTD Sales Volume",
+                "Sales Volume Prediction"
+            ]
+        },
+        "orderDirection": {
+            "title": "Order direction",
+            "type": "string",
+            "editor": "select",
+            "default": "desc",
+            "enum": ["desc", "asc"],
+            "enumTitles": ["Descending (highest first)", "Ascending (lowest first)"]
+        },
+        "maxRecords": {
+            "title": "Max records (total)",
+            "type": "integer",
+            "description": "Total cap across all locations. 0 = unlimited.",
+            "editor": "number",
+            "default": 100,
+            "minimum": 0
+        },
+        "maxRecordsPerLocation": {
+            "title": "Max records per location",
+            "type": "integer",
+            "description": "Cap per city/ZIP. 0 = unlimited.",
+            "editor": "number",
+            "default": 0,
+            "minimum": 0
+        },
+        "minSalesVolume": {
+            "title": "Minimum LTM sales volume",
+            "type": "integer",
+            "description": "Skip agents below this trailing-12-month sales volume (dollars). 0 = no minimum.",
+            "editor": "number",
+            "default": 0,
+            "minimum": 0
+        },
+        "enrichProfiles": {
+            "title": "Enrich each agent (detail call)",
+            "type": "boolean",
+            "description": "Fetch each agent's detail record for extras (mobile phone, full office street address, MLS affiliations, role/team flags, AI agent type, forecast segment). Slower: one extra request per agent.",
+            "editor": "checkbox",
+            "default": false
+        },
+        "includeContactInfo": {
+            "title": "Include saved CRM contact info",
+            "type": "boolean",
+            "editor": "checkbox",
+            "default": true
+        },
+        "delayMs": {
+            "title": "Delay between requests (ms)",
+            "type": "integer",
+            "editor": "number",
+            "default": 350,
+            "minimum": 0
+        },
+        "extraParams": {
+            "title": "Extra query params (advanced)",
+            "type": "object",
+            "description": "Raw agent_search query params to pass through (e.g. a filter copied from the Courted UI network tab).",
+            "editor": "json"
+        }
+    },
+    "required": ["email", "password"]
+}

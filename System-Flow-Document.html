@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lead Scraping System — How It Works</title>
+<style>
+  :root {
+    --blue: #006aff;
+    --blue-d: #0048b3;
+    --ink: #1a1a2e;
+    --muted: #5a6472;
+    --line: #e4e8ee;
+    --bg: #f6f8fb;
+    --card: #ffffff;
+    --code-bg: #f0f3f8;
+    --green: #0a8a4a;
+    --amber: #b06f00;
+    --purple: #6b3fc4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink); background: var(--bg); margin: 0; line-height: 1.6;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 48px 28px 90px; }
+  header.hero {
+    background: linear-gradient(135deg, #006aff 0%, #0048b3 100%);
+    color: #fff; border-radius: 16px; padding: 42px 38px; margin-bottom: 36px;
+  }
+  header.hero h1 { margin: 0 0 8px; font-size: 30px; letter-spacing: -0.5px; }
+  header.hero p { margin: 0; opacity: 0.92; font-size: 16px; max-width: 760px; }
+  .pill { display:inline-block; background: rgba(255,255,255,0.18); padding: 3px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; margin-bottom: 14px; letter-spacing: 0.4px; }
+  h2 { font-size: 22px; margin: 44px 0 14px; padding-bottom: 8px; border-bottom: 2px solid var(--line); letter-spacing: -0.3px; }
+  h3 { font-size: 17px; margin: 24px 0 8px; }
+  p { margin: 10px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 22px 26px; margin: 16px 0; }
+  code { background: var(--code-bg); padding: 2px 6px; border-radius: 5px; font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 13px; color: #b3005f; }
+  pre { background: #1a1f2b; color: #e6edf3; padding: 18px 20px; border-radius: 10px; overflow-x: auto; font-size: 12.5px; line-height: 1.5; }
+  pre code { background: none; color: inherit; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--bg); font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+  tr:hover td { background: #fafcff; }
+  .muted { color: var(--muted); }
+  .tag { display:inline-block; font-size: 11px; font-weight:700; padding: 2px 8px; border-radius: 5px; }
+  .tag-fe { background: #e3f0ff; color: #0048b3; }
+  .tag-be { background: #e9f9ef; color: var(--green); }
+  .tag-ap { background: #f1ebff; color: var(--purple); }
+  .tag-db { background: #fff1e6; color: var(--amber); }
+  .steps { counter-reset: step; list-style: none; padding: 0; margin: 0; }
+  .steps li { position: relative; padding: 14px 0 14px 58px; border-bottom: 1px dashed var(--line); }
+  .steps li:last-child { border-bottom: none; }
+  .steps li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: 0; top: 12px; width: 36px; height: 36px;
+    background: var(--blue); color: #fff; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px;
+  }
+  .steps li b { display:block; margin-bottom: 2px; }
+  .note { border-left: 4px solid var(--amber); background: #fff8ec; padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 14px 0; font-size: 14px; }
+  .note.blue { border-left-color: var(--blue); background: #eef5ff; }
+  .note.green { border-left-color: var(--green); background: #eefaf2; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px){ .grid2, .grid3 { grid-template-columns: 1fr; } }
+  .kv { font-size: 14px; }
+  .kv b { color: var(--blue); }
+  .layer { border-radius: 12px; padding: 16px 18px; margin: 10px 0; border: 1px solid var(--line); }
+  .layer h3 { margin: 0 0 6px; font-size: 15px; }
+  .layer.fe { background: #f4f9ff; }
+  .layer.be { background: #f3fbf6; }
+  .layer.ap { background: #f8f5ff; }
+  .layer.db { background: #fff9f2; }
+  footer { margin-top: 54px; text-align: center; color: var(--muted); font-size: 13px; }
+  ul.clean { margin: 8px 0; padding-left: 20px; }
+  ul.clean li { margin: 4px 0; }
+  @media print { body { background:#fff; } .card, header.hero { box-shadow:none; } pre { white-space: pre-wrap; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="pill">SYSTEM FLOW</div>
+    <h1>Real-Estate Lead Scraping System</h1>
+    <p>A web app where the user searches a ZIP code or location, the system scrapes matching real-estate
+       data in the background, and the results are saved into the user's account — ready to browse and export.</p>
+  </header>
+
+  <h2>1. What the system does</h2>
+  <div class="card">
+    <p>The flow is intentionally simple for the end user: <b>type a location → start the search → get clean, saved data.</b></p>
+    <ul class="clean">
+      <li><b>Search:</b> the user enters a ZIP code or location name (city / neighborhood).</li>
+      <li><b>Scrape:</b> the system runs the data collection in the background using Apify.</li>
+      <li><b>Save:</b> results are stored in the user's account so they persist and stay searchable.</li>
+      <li><b>Get data:</b> the user browses, filters, and exports the results (CSV / Excel).</li>
+    </ul>
+  </div>
+
+  <h2>2. The building blocks</h2>
+  <div class="card">
+    <div class="layer fe">
+      <h3>① Frontend UI <span class="tag tag-fe">WHAT THE USER SEES</span></h3>
+      The web interface: a search form, a "Start" button, live progress, a results table, export buttons, and a history of past searches.
+    </div>
+    <div class="layer be">
+      <h3>② Backend <span class="tag tag-be">THE ENGINE</span></h3>
+      The server that sits between the UI and Apify. It receives the search, starts the scraping job on Apify, tracks it, pulls back the results, and saves them.
+    </div>
+    <div class="layer ap">
+      <h3>③ Apify <span class="tag tag-ap">DATA COLLECTION</span></h3>
+      The cloud service that performs the actual scraping (handling proxies, anti-bot, pagination, etc.) and returns the collected data as a structured dataset.
+    </div>
+    <div class="layer db">
+      <h3>④ Database <span class="tag tag-db">WHERE DATA LIVES</span></h3>
+      Stores the user's account, their searches, and every scraped record — so the data is permanent and independent of the scraping run.
+    </div>
+  </div>
+
+  <h2>3. How we will build the UI</h2>
+  <div class="card kv">
+    <p>The UI is a clean, single-purpose web app. Core screens:</p>
+    <ul class="clean">
+      <li><b>Search screen:</b> a location input (ZIP or name), a source/options panel (e.g. how deep to scrape), and a big <i>Start Scraping</i> button.</li>
+      <li><b>Progress view:</b> after starting, the user sees a live status — <code>Queued → Scraping… → Completed</code> — with a running count of records found.</li>
+      <li><b>Results table:</b> the saved leads in a sortable, filterable grid (filter by city, rating, has-phone, etc.).</li>
+      <li><b>Export:</b> one click to download the current results as CSV or Excel.</li>
+      <li><b>History:</b> a list of previous searches with their result counts and dates, so the user can reopen or re-run any of them.</li>
+    </ul>
+    <p class="muted">Built with a modern web stack (e.g. React / Next.js + Tailwind) for a fast, responsive feel. The UI never talks to Apify directly — it only talks to our backend.</p>
+  </div>
+
+  <h2>4. How the UI connects to Apify (the backend)</h2>
+  <div class="card kv">
+    <p>The backend is the bridge. When the user clicks <i>Start Scraping</i>, here's the chain of events on the server side:</p>
+    <ul class="clean">
+      <li><b>Receive the request</b> from the UI (location + options).</li>
+      <li><b>Record the search</b> in the database with a status of <code>RUNNING</code>.</li>
+      <li><b>Start the scraping job on Apify</b> by calling Apify's API with the search input. Apify replies instantly with a job ID — the scraping then runs in the cloud.</li>
+      <li><b>Wait for completion</b> — Apify notifies the backend the moment the job finishes (via a webhook), or the backend checks the job status periodically.</li>
+      <li><b>Fetch the results</b> — once finished, the backend downloads the dataset (all the collected records) from Apify.</li>
+      <li><b>Save &amp; clean</b> — the backend stores the records in the database under the user's account, removing duplicates.</li>
+      <li><b>Update the UI</b> — the search is marked <code>COMPLETED</code> and the new leads appear.</li>
+    </ul>
+  </div>
+
+  <div class="note blue">
+    <b>Why a backend in the middle?</b> It keeps the Apify connection (and its secret key) safe on the server, controls who can run what, and — most importantly — copies the data into the user's own database so it's saved permanently, not just sitting temporarily inside a scraping run.
+  </div>
+
+  <h2>5. Data flow — end to end</h2>
+  <pre><code>  ┌─────────────┐   1. search (zip / location + options)
+  │  FRONTEND   │ ───────────────────────────────────────────────┐
+  │   (UI)      │ ◄── 7. status + saved results ────────────┐     │
+  └─────────────┘                                           │     ▼
+                                                       ┌──────────────┐
+                                                       │   BACKEND    │
+                              6. save results ◄────────│              │
+                          ┌──────────────┐  2. start job│              │
+                          │   DATABASE   │◄─────────────│              │
+                          │ user/search/ │              └────┬─▲──────┘
+                          │   results    │     2. start scrape│ │ 4. "job finished"
+                          └──────────────┘                    ▼ │
+                                                       ┌──────────────┐
+                                                       │    APIFY     │
+                                                       │  scrapes the │ 3. collect →
+                                                       │   source     │    dataset
+                                                       └──────────────┘
+                                       5. backend downloads the dataset (results)</code></pre>
+
+  <h2>6. How the user gets the data</h2>
+  <div class="grid2">
+    <div class="card kv">
+      <h3>Inside the app</h3>
+      <ul class="clean">
+        <li>Results appear automatically in the <b>results table</b> when the search completes.</li>
+        <li>The user can <b>filter, sort, and search</b> within their saved leads.</li>
+        <li>Every past search is kept in <b>history</b> and can be reopened anytime.</li>
+      </ul>
+    </div>
+    <div class="card kv">
+      <h3>Out of the app</h3>
+      <ul class="clean">
+        <li><b>Export to CSV / Excel</b> with one click — columns arranged in a clean, consistent order.</li>
+        <li>Because the data is saved in the database, exports are <b>instant</b> and don't require re-scraping.</li>
+        <li>Future option: push leads to a CRM or Google Sheets.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>7. What happens behind a single search (timeline)</h2>
+  <div class="card">
+    <ol class="steps">
+      <li><b>User searches</b> a ZIP / location and clicks Start.</li>
+      <li><b>Backend kicks off the scrape</b> on Apify and shows the user a live "Scraping…" status.</li>
+      <li><b>Apify collects the data</b> in the cloud and assembles it into a structured dataset.</li>
+      <li><b>Backend pulls the dataset</b> the moment the job finishes.</li>
+      <li><b>Results are saved</b> to the database under the user's account (duplicates removed).</li>
+      <li><b>User sees &amp; exports</b> the finished, clean data.</li>
+    </ol>
+  </div>
+
+  <h2>8. Tech stack (recommended)</h2>
+  <table>
+    <thead><tr><th>Layer</th><th>Choice</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td>Frontend</td><td>Next.js + React + Tailwind</td><td>The user-facing web app</td></tr>
+      <tr><td>Backend</td><td>Node.js (API routes / Express)</td><td>Connects the UI to Apify and the database</td></tr>
+      <tr><td>Data collection</td><td>Apify</td><td>Runs the scraping in the cloud and returns structured data</td></tr>
+      <tr><td>Database + Auth</td><td>Supabase (Postgres)</td><td>Stores users, searches, and saved results</td></tr>
+      <tr><td>Hosting</td><td>Vercel + Supabase</td><td>Simple, scalable deployment</td></tr>
+    </tbody>
+  </table>
+
+  <footer>
+    Real-Estate Lead Scraping System · System Flow Document
+  </footer>
+
+</div>
+</body>
+</html>

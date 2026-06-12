@@ -1,0 +1,20 @@
+{
+    "name": "courted-agent-scraper",
+    "version": "1.0.0",
+    "description": "Scrapes real estate agent data from Courted (courted.io) by reading the app's own authenticated data API — by city, ZIP, or all agents.",
+    "type": "module",
+    "main": "src/main.js",
+    "engines": {
+        "node": ">=18"
+    },
+    "scripts": {
+        "start": "node src/main.js",
+        "local": "node run-local.mjs"
+    },
+    "dependencies": {
+        "apify": "^3.2.0",
+        "crawlee": "^3.11.0"
+    },
+    "author": "Custom Build",
+    "license": "ISC"
+}

@@ -1,0 +1,45 @@
+{
+    "actorSpecification": 1,
+    "name": "courted-agent-scraper",
+    "title": "Courted Real Estate Agent Scraper",
+    "description": "Scrapes real estate agent production data from Courted (courted.io) by city, ZIP, or across all agents. Reads the app's own authenticated data API (not the CSV export).",
+    "version": "1.0",
+    "buildTag": "latest",
+    "dockerfile": "../Dockerfile",
+    "input": "./input_schema.json",
+    "storages": {
+        "dataset": {
+            "actorSpecification": 1,
+            "title": "Courted Agents",
+            "views": {
+                "agents": {
+                    "title": "Agent Data",
+                    "transformation": {
+                        "fields": [
+                            "Name", "Email", "Phone", "Mobile Phone", "Office", "Brand",
+                            "Office City", "Office State", "Office Zip",
+                            "Years Of Experience",
+                            "LTM Sales Volume", "Sales Volume Change %", "LTM Est GCI",
+                            "LTM Avg Sale Price", "LTM Closed Transactions", "LTM Closed Units",
+                            "LTM Units Buy-Side", "LTM Units List-Side", "Active Listings",
+                            "Pending Listings", "Most Transacted City", "Likelihood To Move",
+                            "MLS", "State License", "Courted Profile URL", "Courted Agent ID",
+                            "Searched Location"
+                        ]
+                    },
+                    "display": {
+                        "component": "table",
+                        "properties": {
+                            "Name": { "label": "Name" },
+                            "Office": { "label": "Office" },
+                            "Email": { "label": "Email" },
+                            "Phone": { "label": "Phone" },
+                            "LTM Sales Volume": { "label": "LTM Volume" },
+                            "Courted Profile URL": { "label": "Profile" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

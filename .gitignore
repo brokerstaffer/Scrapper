@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Secrets — never commit real credentials
+.env
+*.env
+!*.env.example
+web/.env
+**/.env
+
+# Crawlee / Apify local storage
+storage/
+**/storage/
+apify_storage/
+crawlee_storage/
+
+# Scraped output / data dumps (may contain personal contact info)
+output/
+**/output/
+*.csv
+
+# Reconnaissance / scratch
+recon/
+
+# Logs & OS cruft
+*.log
+.DS_Store
+
+# Internal-only docs (not for client repo)
+ZILLOW APIFY ACTOR — Claude Code Project Brief.txt
+Pricing-And-Publishing-Guide.html

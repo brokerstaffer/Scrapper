@@ -1,0 +1,24 @@
+{
+    "name": "zillow-agent-scraper",
+    "version": "1.0.0",
+    "description": "Apify actor to scrape Zillow real estate agent data",
+    "type": "module",
+    "main": "src/main.js",
+    "engines": {
+        "node": ">=18"
+    },
+    "scripts": {
+        "start": "node src/main.js",
+        "test": "node --test"
+    },
+    "dependencies": {
+        "apify": "^3.2.0",
+        "crawlee": "^3.11.0",
+        "playwright": "^1.40.0"
+    },
+    "author": "Custom Build",
+    "license": "ISC",
+    "devDependencies": {
+        "apify-cli": "^1.6.2"
+    }
+}

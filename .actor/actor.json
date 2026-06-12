@@ -1,0 +1,52 @@
+{
+    "actorSpecification": 1,
+    "name": "zillow-agent-scraper",
+    "title": "Zillow Real Estate Agent Scraper",
+    "description": "Scrapes real estate agent profiles from Zillow by city, neighborhood, or ZIP code. Returns structured data including name, brokerage, rating, sales history, and contact information.",
+    "version": "2.2",
+    "buildTag": "latest",
+    "dockerfile": "../Dockerfile",
+    "input": "./input_schema.json",
+    "storages": {
+        "dataset": {
+            "actorSpecification": 1,
+            "title": "Zillow Agents",
+            "views": {
+                "agents": {
+                    "title": "Agent Data",
+                    "transformation": {
+                        "fields": [
+                            "Name", "Brokerage", "Phone", "Email", "Rating", "Review Count",
+                            "Total Sales Count", "Active Listings Count",
+                            "For Sale Count", "For Rent Count", "Sold Count", "Specialties",
+                            "Service Areas", "Years of Experience", "Languages Spoken",
+                            "Location", "City", "State", "Zip Code",
+                            "Profile Photo URL", "Zillow Profile URL", "Top Agent on Zillow",
+                            "Is Team", "Team Name", "Team Member Count",
+                            "Average Sales Volume", "Average Price",
+                            "Sales Count Last Year", "Premier Agent", "Local Sales Count",
+                            "Legal Name", "Title", "Address", "Brokerage Address",
+                            "Brokerage Phone", "Website URL",
+                            "Facebook URL", "LinkedIn URL", "Instagram URL", "Twitter URL",
+                            "YouTube URL", "Pinterest URL",
+                            "License Number", "License State", "License Description",
+                            "All Licenses", "Rental Listings Count"
+                        ]
+                    },
+                    "display": {
+                        "component": "table",
+                        "properties": {
+                            "Name": { "label": "Name" },
+                            "Brokerage": { "label": "Brokerage" },
+                            "Phone": { "label": "Phone" },
+                            "Email": { "label": "Email" },
+                            "Rating": { "label": "Rating" },
+                            "Review Count": { "label": "Reviews" },
+                            "Zillow Profile URL": { "label": "Profile URL" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

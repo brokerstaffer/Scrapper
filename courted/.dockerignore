@@ -1,0 +1,7 @@
+node_modules
+output
+storage
+recon
+.git
+.DS_Store
+*.log

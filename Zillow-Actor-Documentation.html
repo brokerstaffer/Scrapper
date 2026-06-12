@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zillow Agent Scraper — How It Works</title>
+<style>
+  :root {
+    --blue: #006aff;
+    --ink: #1a1a2e;
+    --muted: #5a6472;
+    --line: #e4e8ee;
+    --bg: #f6f8fb;
+    --card: #ffffff;
+    --code-bg: #f0f3f8;
+    --green: #0a8a4a;
+    --amber: #b06f00;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink); background: var(--bg); margin: 0; line-height: 1.6;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 48px 28px 80px; }
+  header.hero {
+    background: linear-gradient(135deg, #006aff 0%, #0048b3 100%);
+    color: #fff; border-radius: 16px; padding: 40px 36px; margin-bottom: 36px;
+  }
+  header.hero h1 { margin: 0 0 8px; font-size: 30px; letter-spacing: -0.5px; }
+  header.hero p { margin: 0; opacity: 0.92; font-size: 16px; }
+  .pill { display:inline-block; background: rgba(255,255,255,0.18); padding: 3px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; margin-bottom: 14px; letter-spacing: 0.4px; }
+  h2 { font-size: 22px; margin: 40px 0 14px; padding-bottom: 8px; border-bottom: 2px solid var(--line); letter-spacing: -0.3px; }
+  h3 { font-size: 17px; margin: 26px 0 10px; }
+  p { margin: 10px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 22px 26px; margin: 16px 0; }
+  code { background: var(--code-bg); padding: 2px 6px; border-radius: 5px; font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 13px; color: #b3005f; }
+  pre { background: #1a1f2b; color: #e6edf3; padding: 18px 20px; border-radius: 10px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+  pre code { background: none; color: inherit; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--bg); font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+  tr:hover td { background: #fafcff; }
+  .tag { display:inline-block; font-size: 11px; font-weight:700; padding: 2px 8px; border-radius: 5px; }
+  .tag-1 { background: #e3f0ff; color: #0048b3; }
+  .tag-2 { background: #e9f9ef; color: var(--green); }
+  .muted { color: var(--muted); }
+  .steps { counter-reset: step; list-style: none; padding: 0; margin: 0; }
+  .steps li { position: relative; padding: 14px 0 14px 56px; border-bottom: 1px dashed var(--line); }
+  .steps li:last-child { border-bottom: none; }
+  .steps li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: 0; top: 12px; width: 34px; height: 34px;
+    background: var(--blue); color: #fff; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px;
+  }
+  .steps li b { display:block; margin-bottom: 2px; }
+  .note { border-left: 4px solid var(--amber); background: #fff8ec; padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 14px 0; font-size: 14px; }
+  .note.blue { border-left-color: var(--blue); background: #eef5ff; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 680px){ .grid2 { grid-template-columns: 1fr; } }
+  .kv { font-size: 14px; }
+  .kv b { color: var(--blue); }
+  footer { margin-top: 50px; text-align: center; color: var(--muted); font-size: 13px; }
+  @media print { body { background:#fff; } .card, header.hero { box-shadow:none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="pill">APIFY ACTOR · TECHNICAL DOC</div>
+    <h1>Zillow Agent Scraper — How It Works</h1>
+    <p>A Playwright-based Apify actor that extracts real-estate agent data from Zillow agent-search pages, with optional per-profile enrichment.</p>
+  </header>
+
+  <h2>1. What it does in one sentence</h2>
+  <div class="card">
+    <p>You give it a list of <b>locations</b> (cities, neighborhoods, or ZIP codes). For each location it opens Zillow's
+    <i>"Find an Agent"</i> results, scrolls through every agent in the list, and outputs one structured record per agent.
+    Optionally, it then visits each agent's profile page to pull contact and business details.</p>
+    <p class="muted">Search URL pattern: <code>zillow.com/professionals/real-estate-agent-reviews/&lt;location-slug&gt;/?page=N</code></p>
+  </div>
+
+  <h2>2. The two-step pipeline</h2>
+  <div class="card">
+    <ol class="steps">
+      <li>
+        <b>Step 1 — Search page scrape (always runs)</b>
+        Loads the agent results page, slow-scrolls to force Zillow's <i>virtualized</i> list to render every agent,
+        collects each agent's profile link + card text + headshot, and parses it into a record. Handles pagination up to
+        Zillow's 25-page cap.
+      </li>
+      <li>
+        <b>Step 2 — Profile enrichment (only if <code>enrichProfiles</code> is ON)</b>
+        Visits each agent's profile page and fills in extra fields (phone, email, socials, license, etc.).
+        It <b>only fills empty fields</b> — Step 1 data is never overwritten. If a profile fails to load, the Step 1
+        record is still saved.
+      </li>
+    </ol>
+  </div>
+
+  <div class="note blue">
+    <b>How enrichment is decided:</b> profiles are de-duplicated globally (an agent appearing in multiple
+    locations/pages is only visited once). When <code>maxProfilesPerLocation</code> is set, only that many profiles per
+    location are enriched; the rest are saved with Step 1 data only.
+  </div>
+
+  <h2>3. What it fetches — output fields</h2>
+  <p>Every record always contains <b>all</b> columns below (empty string when unavailable), so CSV/Excel exports line up cleanly.</p>
+
+  <h3><span class="tag tag-1">STEP 1</span> &nbsp;Always available (from the search results page)</h3>
+  <table>
+    <thead><tr><th>Field</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>Name</code></td><td>Agent or team name</td></tr>
+      <tr><td><code>Brokerage</code></td><td>Brokerage / company name</td></tr>
+      <tr><td><code>Rating</code></td><td>Star rating, e.g. <code>5.0</code></td></tr>
+      <tr><td><code>Review Count</code></td><td>Number of reviews</td></tr>
+      <tr><td><code>Location</code></td><td>The location you searched (full string)</td></tr>
+      <tr><td><code>City</code> / <code>State</code> / <code>Zip Code</code></td><td>Parsed components of the search location</td></tr>
+      <tr><td><code>Profile Photo URL</code></td><td>Agent headshot image URL</td></tr>
+      <tr><td><code>Zillow Profile URL</code></td><td>Link to the agent's Zillow profile</td></tr>
+      <tr><td><code>Top Agent on Zillow</code></td><td><code>Yes</code> / <code>No</code> — Top Agent badge</td></tr>
+      <tr><td><code>Team Name</code></td><td>Set when the listing is a team</td></tr>
+      <tr><td><code>Average Sales Volume</code></td><td>Price range, e.g. <code>$400K - $1.4M</code></td></tr>
+      <tr><td><code>Sales Count Last Year</code></td><td>Sales in the last 12 months (<code>0</code> if none)</td></tr>
+      <tr><td><code>Local Sales Count</code></td><td>Sales in the searched area (<code>0</code> if none)</td></tr>
+    </tbody>
+  </table>
+
+  <h3><span class="tag tag-2">STEP 2</span> &nbsp;Only when profile enrichment is ON</h3>
+  <table>
+    <thead><tr><th>Field</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>Phone</code></td><td>Agent phone number</td></tr>
+      <tr><td><code>Email</code></td><td>Agent email</td></tr>
+      <tr><td><code>Total Sales Count</code></td><td>Lifetime / all-time sales</td></tr>
+      <tr><td><code>Active Listings Count</code></td><td>Current for-sale listings</td></tr>
+      <tr><td><code>Specialties</code></td><td>Focus areas / specialties</td></tr>
+      <tr><td><code>Years of Experience</code></td><td>Years in business</td></tr>
+      <tr><td><code>Languages Spoken</code></td><td>Languages</td></tr>
+      <tr><td><code>Premier Agent</code></td><td><code>Yes</code> / <code>No</code></td></tr>
+      <tr><td><code>Legal Name</code> / <code>Title</code></td><td>Full legal name and professional title</td></tr>
+      <tr><td><code>Brokerage Address</code> / <code>Brokerage Phone</code></td><td>Office address and phone</td></tr>
+      <tr><td><code>Website URL</code></td><td>Personal / business website</td></tr>
+      <tr><td><code>Facebook / LinkedIn / Instagram / Twitter / YouTube / Pinterest URL</code></td><td>Social profiles (Zillow's own corporate socials are filtered out)</td></tr>
+      <tr><td><code>License Number</code></td><td>Real-estate license (only from per-agent data; left blank when Zillow doesn't expose it)</td></tr>
+      <tr><td><code>Rental Listings Count</code></td><td>For-rent listings</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note">
+    <b>How Step 2 fields are pulled:</b> two methods, merged together —
+    <b>Method A</b> reads the page's embedded <code>__NEXT_DATA__</code> JSON and harvests known keys;
+    <b>Method B</b> scrapes the rendered DOM (<code>tel:</code> / <code>mailto:</code> links, social links, body text for years of experience and Premier Agent). Fields that are still empty stay as <code>""</code>.
+  </div>
+
+  <h2>4. Input settings</h2>
+  <table>
+    <thead><tr><th>Input</th><th>Type</th><th>Default</th><th>What it controls</th></tr></thead>
+    <tbody>
+      <tr><td><code>locations</code> <span class="muted">(required)</span></td><td>array</td><td>—</td><td>Cities, neighborhoods, or ZIPs to search, e.g. <code>"Mead, CO"</code>, <code>"80542"</code></td></tr>
+      <tr><td><code>maxPages</code></td><td>integer</td><td>25</td><td>Max search result pages per location (Zillow caps at 25)</td></tr>
+      <tr><td><code>enrichProfiles</code></td><td>boolean</td><td>false</td><td>Turn on Step 2 profile visits (slower, more fields)</td></tr>
+      <tr><td><code>maxProfilesPerLocation</code></td><td>integer</td><td>0</td><td>Limit profiles enriched per location; <code>0</code> = unlimited</td></tr>
+      <tr><td><code>proxy</code></td><td>object</td><td>Apify Residential</td><td>Proxy config — residential strongly recommended for Zillow</td></tr>
+      <tr><td><code>delayBetweenPages</code></td><td>integer</td><td>5</td><td>Seconds (±jitter) between page loads</td></tr>
+      <tr><td><code>delayBetweenProfiles</code></td><td>integer</td><td>4</td><td>Seconds (±jitter) between profile visits</td></tr>
+    </tbody>
+  </table>
+
+  <h2>5. Anti-bot &amp; reliability design</h2>
+  <div class="grid2">
+    <div class="card kv">
+      <h3>Staying under the radar</h3>
+      <p><b>Concurrency = 1.</b> Never opens more than one Zillow tab at a time.</p>
+      <p><b>Randomized delays</b> between pages and profiles (with jitter).</p>
+      <p><b>Rotated user agents</b> + browser fingerprinting per request.</p>
+      <p><b>Residential proxies</b> with sticky-then-rotated sessions.</p>
+    </div>
+    <div class="card kv">
+      <h3>Robustness</h3>
+      <p><b>Captcha detection:</b> recognizes Zillow's "Press &amp; Hold" / "confirm you're a human" pages, retires the session, and retries with a fresh one (up to 5 retries).</p>
+      <p><b>Bandwidth saving:</b> blocks images, media, and fonts (~80% less proxy traffic; only text is needed).</p>
+      <p><b>Graceful degradation:</b> if a profile fails, the Step 1 record is still saved.</p>
+    </div>
+  </div>
+
+  <h2>6. How the data flows</h2>
+  <pre><code>locations[]  ─►  build search URL (page 1)
+                     │
+              ┌──────▼───────┐
+              │  SEARCH page │  ◄── slow-scroll virtualized list,
+              │   handler    │      collect links + card text + photo
+              └──────┬───────┘
+                     │  parse each agent card
+                     │  de-dupe by profile URL
+            ┌────────┴─────────┐
+   enrich OFF │                │ enrich ON (under cap)
+       save record       queue PROFILE request
+                              │
+                       ┌──────▼───────┐
+                       │ PROFILE page │  ◄── __NEXT_DATA__ JSON + DOM scrape,
+                       │   handler    │      fill only empty fields
+                       └──────┬───────┘
+                              │
+                          save record
+   (SEARCH handler also queues next page until maxPages / no next page)</code></pre>
+
+  <h2>7. Tech stack</h2>
+  <div class="card kv">
+    <p><b>Runtime:</b> Node.js on the Apify platform · <b>Crawler:</b> Crawlee <code>PlaywrightCrawler</code> (headless Chromium)</p>
+    <p><b>Output:</b> Apify Dataset (export to JSON / CSV / Excel) · <b>Parsing:</b> validated regex + DOM-segment parser</p>
+    <p><b>Source layout:</b> <code>main.js</code> (orchestration) · <code>routes.js</code> (SEARCH/PROFILE handlers) · <code>search-page.js</code> (Step 1) · <code>profile-page.js</code> (Step 2) · <code>parser.js</code> (text parsing) · <code>constants.js</code> (columns, delays, helpers)</p>
+  </div>
+
+  <footer>
+    Zillow Agent Scraper · Internal technical documentation · Generated 2026-06-08
+  </footer>
+
+</div>
+</body>
+</html>
