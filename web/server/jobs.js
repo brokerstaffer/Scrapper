@@ -18,10 +18,11 @@ export function createJob(params) {
         status: 'running',         // running | done | error
         events: [],                // full event log (for late subscribers + replay)
         subscribers: new Set(),    // Set<res> (SSE responses)
-        rows: { zillow: [], courted: [] },
+        rows: { zillow: [], courted: [], realtor: [] },
         sources: {                 // per-source progress
             zillow: { status: 'pending', count: 0, total: null, message: '' },
             courted: { status: 'pending', count: 0, total: null, message: '' },
+            realtor: { status: 'pending', count: 0, total: null, message: '' },
         },
         pending: 0,                // engines still running
     };

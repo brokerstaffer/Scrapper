@@ -66,8 +66,8 @@ button.ghost {
 }
 button.ghost:disabled { opacity: .4; cursor: default; }
 
-.results { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-@media (max-width: 1100px) { .results { grid-template-columns: 1fr; } }
+.results { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 20px; }
+@media (max-width: 960px) { .results { grid-template-columns: 1fr; } }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
 .panel-head {
     display: flex; justify-content: space-between; align-items: center;

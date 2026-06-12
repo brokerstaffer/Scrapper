@@ -1,7 +1,9 @@
-// app.js — frontend: kick off a search, stream results into two live tables.
+// app.js — frontend: kick off a search, stream results into live tables.
 
-// Compact "key columns" view (toggle). The FULL column set (76 Courted / 47
-// Zillow) is loaded from the server and is the default.
+const SOURCES = ['courted', 'zillow', 'realtor'];
+
+// Compact "key columns" view (toggle). The FULL column set is loaded from the
+// server and is the default.
 const KEY_COLS = {
     courted: [
         'Name', 'Office', 'Email', 'Phone', 'Years Of Experience',
@@ -13,31 +15,39 @@ const KEY_COLS = {
         'Total Sales Count', 'Average Price', 'For Sale Count', 'Location',
         'Zillow Profile URL',
     ],
+    realtor: [
+        'Name', 'Office', 'Phone', 'Mobile Phone', 'Rating', 'Review Count',
+        'Years Of Experience', 'For Sale Count', 'Sold Count', 'Combined Price Range',
+        'License Number', 'Served Areas', 'Realtor Profile URL',
+    ],
 };
 
 // Full column lists from the server (fallback to KEY_COLS until loaded).
-let ALL_COLS = { courted: [...KEY_COLS.courted], zillow: [...KEY_COLS.zillow] };
+let ALL_COLS = {
+    courted: [...KEY_COLS.courted], zillow: [...KEY_COLS.zillow], realtor: [...KEY_COLS.realtor],
+};
 let showAllCols = true; // default: show every column
 const DISPLAY_COLS = () => (showAllCols ? ALL_COLS : KEY_COLS);
 
 fetch('/api/columns')
     .then((r) => r.json())
-    .then((cols) => { if (cols && cols.courted && cols.zillow) ALL_COLS = cols; })
+    .then((cols) => { if (cols && cols.courted) ALL_COLS = cols; })
     .catch(() => {});
 
-const URL_COLS = new Set(['Zillow Profile URL', 'Courted Profile URL', 'Profile Photo URL', 'Website URL']);
+const URL_COLS = new Set(['Zillow Profile URL', 'Courted Profile URL', 'Realtor Profile URL', 'Profile Photo URL', 'Website URL', 'Facebook URL', 'Instagram URL', 'LinkedIn URL', 'Twitter URL', 'YouTube URL', 'TikTok URL']);
 const MONEY_COLS = new Set(['LTM Sales Volume', 'LTM Est GCI', 'LTM Avg Sale Price', 'YTD Sales Volume']);
 
 const $ = (id) => document.getElementById(id);
 let currentJob = null;
 let es = null;
-const totals = { courted: null, zillow: null }; // matched-count per source
-const rowData = { courted: [], zillow: [] };     // raw rows kept for re-render on toggle
+const totals = {};   // matched-count per source
+const rowData = {};  // raw rows kept for re-render on toggle
+for (const s of SOURCES) { totals[s] = null; rowData[s] = []; }
 
 $('searchBtn').addEventListener('click', startSearch);
 $('showAll').addEventListener('change', (e) => {
     showAllCols = e.target.checked;
-    for (const src of ['courted', 'zillow']) rerender(src);
+    for (const src of SOURCES) rerender(src);
 });
 
 // Rebuild a whole table (header + all rows) from stored data — used on toggle.
@@ -61,9 +71,7 @@ function startSearch() {
         .split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
     if (!locations.length) { alert('Enter at least one location or ZIP.'); return; }
 
-    const sources = [];
-    if ($('src-courted').checked) sources.push('courted');
-    if ($('src-zillow').checked) sources.push('zillow');
+    const sources = SOURCES.filter((s) => $(`src-${s}`).checked);
     if (!sources.length) { alert('Select at least one source.'); return; }
 
     const body = {
@@ -75,6 +83,9 @@ function startSearch() {
         zillowMaxPages: +$('zillowMaxPages').value || 25,
         zillowConcurrency: +$('zillowConcurrency').value || 4,
         zillowEnrich: $('zillowEnrich').checked,
+        realtorMax: +$('realtorMax').value || 0,
+        realtorConcurrency: +$('realtorConcurrency').value || 3,
+        realtorEnrich: $('realtorEnrich').checked,
     };
 
     resetUi(sources);
@@ -131,12 +142,10 @@ function openStream(jobId) {
 }
 
 function resetUi(sources) {
-    totals.courted = null;
-    totals.zillow = null;
-    rowData.courted = [];
-    rowData.zillow = [];
     showAllCols = $('showAll').checked;
-    for (const src of ['courted', 'zillow']) {
+    for (const src of SOURCES) {
+        totals[src] = null;
+        rowData[src] = [];
         const active = sources.includes(src);
         $(`panel-${src}`).style.opacity = active ? '1' : '0.4';
         $(`table-${src}`).querySelector('thead').innerHTML =

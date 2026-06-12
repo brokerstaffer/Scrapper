@@ -9,8 +9,10 @@ import { readFileSync, existsSync } from 'node:fs';
 import { createJob, getJob, emit, subscribe, unsubscribe } from './jobs.js';
 import { runCourted } from './engines/courted.js';
 import { runZillow } from './engines/zillow.js';
+import { runRealtor } from './engines/realtor.js';
 import { OUTPUT_COLUMNS as COURTED_COLS } from '../../courted/src/constants.js';
 import { OUTPUT_COLUMNS as ZILLOW_COLS } from '../../src/constants.js';
+import { OUTPUT_COLUMNS as REALTOR_COLS } from './engines/realtor-map.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '../..');
@@ -22,7 +24,7 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(ROOT, 'web/public')));
 
-const COLS = { courted: COURTED_COLS, zillow: ZILLOW_COLS };
+const COLS = { courted: COURTED_COLS, zillow: ZILLOW_COLS, realtor: REALTOR_COLS };
 
 // Full column lists per source (so the UI can show every field).
 app.get('/api/columns', (_req, res) => res.json(COLS));
@@ -33,7 +35,7 @@ app.post('/api/search', (req, res) => {
     const locations = (Array.isArray(b.locations) ? b.locations : [])
         .map((s) => String(s).trim()).filter(Boolean);
     const sources = (Array.isArray(b.sources) ? b.sources : ['zillow', 'courted'])
-        .filter((s) => s === 'zillow' || s === 'courted');
+        .filter((s) => s === 'zillow' || s === 'courted' || s === 'realtor');
 
     if (!locations.length) return res.status(400).json({ error: 'Provide at least one location or ZIP.' });
     if (!sources.length) return res.status(400).json({ error: 'Select at least one source.' });
@@ -50,6 +52,11 @@ app.post('/api/search', (req, res) => {
         zillowEnrich: Boolean(b.zillowEnrich),
         zillowMaxProfiles: toInt(b.zillowMaxProfiles, 0),
         zillowConcurrency: toInt(b.zillowConcurrency, 4),
+        // Realtor options
+        realtorMax: toInt(b.realtorMax, 100),
+        realtorEnrich: Boolean(b.realtorEnrich),
+        realtorMaxProfiles: toInt(b.realtorMaxProfiles, 0),
+        realtorConcurrency: toInt(b.realtorConcurrency, 3),
     };
 
     const job = createJob(params);
@@ -58,6 +65,7 @@ app.post('/api/search', (req, res) => {
     // Kick off engines (fire-and-forget; they stream into the job).
     if (sources.includes('courted')) runCourted(job);
     if (sources.includes('zillow')) runZillow(job);
+    if (sources.includes('realtor')) runRealtor(job);
 
     res.json({ jobId: job.id, params });
 });
@@ -74,7 +82,7 @@ app.get('/api/search/:id/stream', (req, res) => {
 app.get('/api/search/:id/export', (req, res) => {
     const job = getJob(req.params.id);
     if (!job) return res.status(404).send('job not found');
-    const source = req.query.source === 'zillow' ? 'zillow' : 'courted';
+    const source = ['zillow', 'realtor', 'courted'].includes(req.query.source) ? req.query.source : 'courted';
     const rows = job.rows[source] || [];
     const cols = COLS[source];
     res.setHeader('Content-Type', 'text/csv');
@@ -86,7 +94,8 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`\n  Agent Search webapp → http://localhost:${PORT}\n`);
     console.log(`  Courted creds: ${process.env.COURTED_EMAIL ? 'set ✓' : 'NOT SET ✗ (web/.env)'}`);
-    console.log(`  Zillow proxy:  ${process.env.ZILLOW_PROXY_URL ? 'set ✓' : 'not set (Zillow may be blocked)'}\n`);
+    console.log(`  Zillow proxy:  ${process.env.ZILLOW_PROXY_URL ? 'set ✓' : 'not set (Zillow may be blocked)'}`);
+    console.log(`  ZenRows key:   ${process.env.ZENROWS_API_KEY ? 'set ✓ (realtor.com)' : 'not set (realtor.com disabled)'}\n`);
 });
 
 // --- helpers ---
