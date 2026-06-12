@@ -10,6 +10,7 @@ import { createJob, getJob, emit, subscribe, unsubscribe } from './jobs.js';
 import { runCourted } from './engines/courted.js';
 import { runZillow } from './engines/zillow.js';
 import { runRealtor } from './engines/realtor.js';
+import { activeProvider as unblockerProvider } from './unblocker.js';
 import { OUTPUT_COLUMNS as COURTED_COLS } from '../../courted/src/constants.js';
 import { OUTPUT_COLUMNS as ZILLOW_COLS } from '../../src/constants.js';
 import { OUTPUT_COLUMNS as REALTOR_COLS } from './engines/realtor-map.js';
@@ -95,7 +96,7 @@ app.listen(PORT, () => {
     console.log(`\n  Agent Search webapp → http://localhost:${PORT}\n`);
     console.log(`  Courted creds: ${process.env.COURTED_EMAIL ? 'set ✓' : 'NOT SET ✗ (web/.env)'}`);
     console.log(`  Zillow proxy:  ${process.env.ZILLOW_PROXY_URL ? 'set ✓' : 'not set (Zillow may be blocked)'}`);
-    console.log(`  ZenRows key:   ${process.env.ZENROWS_API_KEY ? 'set ✓ (realtor.com)' : 'not set (realtor.com disabled)'}\n`);
+    console.log(`  Realtor unblocker: ${unblockerProvider() || 'NONE (realtor.com disabled)'}\n`);
 });
 
 // --- helpers ---

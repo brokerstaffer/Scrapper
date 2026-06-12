@@ -8,7 +8,7 @@
 // Search is cheap (1 request per ~24 agents). Enrichment is 1 request PER agent,
 // so it's gated behind a toggle + a cap to control ZenRows credit spend.
 
-import { fetchViaZenRows, extractNextData } from '../zenrows.js';
+import { fetchUnblocked, extractNextData, activeProvider } from '../unblocker.js';
 import { mapSearchRecord, mergeDetail, profileUrl } from './realtor-map.js';
 import { emit, engineFinished } from '../jobs.js';
 
@@ -40,15 +40,9 @@ function searchUrl(slug, page) {
  *  - Search pages are server-rendered → try cheap (no JS render) first, ~10 credits.
  *  - Profile pages need JS rendering → go straight to render (forceRender), ~25 credits.
  */
-async function fetchRealtor(url, log, forceRender = false) {
-    if (!forceRender) {
-        try {
-            const html = await fetchViaZenRows(url, { jsRender: false, premium: true });
-            const nd = extractNextData(html);
-            if (nd) return nd;
-        } catch { /* fall through to render */ }
-    }
-    const html = await fetchViaZenRows(url, { jsRender: true, premium: true, timeoutMs: 90000 });
+async function fetchRealtor(url, _log, forceRender = false) {
+    // Bright Data auto-renders; ZenRows uses render only for profile pages.
+    const html = await fetchUnblocked(url, { render: forceRender });
     return extractNextData(html);
 }
 
@@ -62,8 +56,8 @@ async function crawl(job) {
         realtorConcurrency = 3,
     } = job.params;
 
-    if (!process.env.ZENROWS_API_KEY) {
-        emit(job, 'source_error', { source, message: 'ZENROWS_API_KEY not set (web/.env).' });
+    if (!activeProvider()) {
+        emit(job, 'source_error', { source, message: 'No unblocker configured (set BRIGHTDATA_API_TOKEN or ZENROWS_API_KEY in web/.env).' });
         engineFinished(job);
         return;
     }

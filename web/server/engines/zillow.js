@@ -19,6 +19,8 @@ import { parseLocation } from '../../../src/parser.js';
 import { scrapeSearchPage, hasNextPage } from '../../../src/search-page.js';
 import { enrichProfilePage } from '../../../src/profile-page.js';
 import { ZILLOW_BASE, SEARCH_PATH, jitterMs, sleep } from '../../../src/constants.js';
+import { chromium } from 'playwright';
+import { fetchUnblocked, activeProvider } from '../unblocker.js';
 import { emit, engineFinished } from '../jobs.js';
 
 Configuration.getGlobalConfig().set('persistStorage', false);
@@ -64,8 +66,8 @@ async function crawl(job) {
 
     const seen = new Set();      // profile URL dedupe
     const pagesQueued = new Set(); // `${slug}:${p}` so we fan out a location's pages once
+    const toEnrich = [];         // agents to enrich via the unblocker after search
     let pushed = 0;
-    let enrichedQueued = 0;
 
     const crawler = new PlaywrightCrawler({
         proxyConfiguration,
@@ -153,21 +155,20 @@ async function crawl(job) {
                 }
             }
 
-            const profileReqs = [];
             for (const a of agents) {
                 const url = a['Zillow Profile URL'];
                 if (url && seen.has(url)) continue;
                 if (url) seen.add(url);
 
-                if (zillowEnrich && url && (!zillowMaxProfiles || enrichedQueued < zillowMaxProfiles)) {
-                    enrichedQueued += 1;
-                    profileReqs.push({ url, uniqueKey: `P:${url}`, label: 'PROFILE', userData: { label: 'PROFILE', agent: a, location } });
+                // Enrichment runs AFTER search, through the unblocker (Bright Data),
+                // because Zillow 403s profile pages over the residential proxy.
+                if (zillowEnrich && url) {
+                    toEnrich.push(a);
                 } else {
                     emit(job, 'record', { source, row: a });
                     pushed += 1;
                 }
             }
-            if (profileReqs.length) await cr.addRequests(profileReqs);
 
             await sleep(jitterMs(2, 1)); // small human-ish jitter
         },
@@ -190,6 +191,13 @@ async function crawl(job) {
     try {
         emit(job, 'progress', { source, status: 'running', message: `Launching ${concurrency} stealth browsers…` });
         await crawler.run(startRequests);
+        await crawler.teardown().catch(() => {});
+
+        // --- Enrichment phase (via Bright Data / ZenRows unblocker) ---
+        if (zillowEnrich && toEnrich.length) {
+            pushed += await enrichZillow(job, toEnrich, { zillowMaxProfiles, zillowConcurrency }, log);
+        }
+
         if (pushed === 0) {
             emit(job, 'source_error', { source, message: 'Zillow blocked all attempts (captcha). Try again — the proxy rotates IPs.' });
         } else {
@@ -201,4 +209,54 @@ async function crawl(job) {
         await crawler.teardown().catch(() => {});
         engineFinished(job);
     }
+}
+
+/**
+ * Enrich Zillow agents via the unblocker: fetch each profile's HTML (Bright Data
+ * gets past Zillow's 403), load it into a Playwright page with setContent, and
+ * run the existing enrichProfilePage extractor. Emits a record per agent.
+ * Returns the number pushed.
+ */
+async function enrichZillow(job, agents, opts, log) {
+    const source = 'zillow';
+    const cap = opts.zillowMaxProfiles > 0 ? Math.min(opts.zillowMaxProfiles, agents.length) : agents.length;
+    const queue = agents.slice(0, cap);
+    let pushed = 0;
+
+    // Agents beyond the cap go out as base records.
+    for (const a of agents.slice(cap)) { emit(job, 'record', { source, row: a }); pushed += 1; }
+
+    if (!activeProvider()) {
+        log.warning('Zillow enrich needs an unblocker (set BRIGHTDATA_API_TOKEN); emitting base records.');
+        for (const a of queue) { emit(job, 'record', { source, row: a }); pushed += 1; }
+        return pushed;
+    }
+
+    log.info(`Enriching ${queue.length} Zillow profiles via ${activeProvider()}…`);
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const workers = Math.min(Math.max(1, opts.zillowConcurrency || 4), 5);
+        let idx = 0;
+        const worker = async () => {
+            while (idx < queue.length) {
+                const a = queue[idx]; idx += 1;
+                try {
+                    const html = await fetchUnblocked(a['Zillow Profile URL'], { render: true });
+                    const ctx = await browser.newContext();
+                    const page = await ctx.newPage();
+                    await page.setContent(html, { waitUntil: 'domcontentloaded' });
+                    await enrichProfilePage({ page, agent: a, log: { info() {}, warning() {}, debug() {} } });
+                    await ctx.close().catch(() => {});
+                } catch (err) {
+                    log.warning(`Zillow enrich failed: ${err.message}`);
+                }
+                emit(job, 'record', { source, row: a });
+                pushed += 1;
+            }
+        };
+        await Promise.all(Array.from({ length: workers }, worker));
+    } finally {
+        await browser.close().catch(() => {});
+    }
+    return pushed;
 }
