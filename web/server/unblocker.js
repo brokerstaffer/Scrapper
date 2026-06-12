@@ -20,15 +20,19 @@ export function activeProvider() {
 // one engine's burst can't starve the other and trip the provider's limits.
 const MAX_CONCURRENT = Number(process.env.UNBLOCKER_MAX_CONCURRENT) || 8;
 let active = 0;
-const waiters = [];
+const queue = [];
+function drain() {
+    while (active < MAX_CONCURRENT && queue.length) {
+        active += 1;
+        (queue.shift())();
+    }
+}
 function acquire() {
-    if (active < MAX_CONCURRENT) { active += 1; return Promise.resolve(); }
-    return new Promise((resolve) => waiters.push(resolve)).then(() => { active += 1; });
+    return new Promise((resolve) => { queue.push(resolve); drain(); });
 }
 function release() {
-    active -= 1;
-    const next = waiters.shift();
-    if (next) next();
+    if (active > 0) active -= 1;
+    drain();
 }
 
 /** Fetch a page's HTML through the configured unblocker (globally rate-limited). */

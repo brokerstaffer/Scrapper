@@ -96,10 +96,15 @@ export function subscribe(job, res) {
         res.write(`event: complete\ndata: ${JSON.stringify({ status: job.status })}\n\n`);
     }
     job.subscribers.add(res);
+    // Heartbeat: keep the connection alive during long silent fetches (a realtor
+    // page can take ~40s); otherwise idle SSE connections drop and live records
+    // emitted in that window are lost.
+    res.__hb = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* closed */ } }, 15000);
 }
 
 export function unsubscribe(job, res) {
     job.subscribers.delete(res);
+    if (res.__hb) { clearInterval(res.__hb); res.__hb = null; }
 }
 
 /** Mark one engine finished; when all are done, fire the job-level complete. */

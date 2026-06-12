@@ -23,7 +23,12 @@ loadEnv(path.join(ROOT, 'web/.env'));
 
 const app = express();
 app.use(express.json());
-app.use(express.static(path.join(ROOT, 'web/public')));
+// Never cache the UI assets — always serve the latest app.js / index.html.
+app.use(express.static(path.join(ROOT, 'web/public'), {
+    etag: false,
+    lastModified: false,
+    setHeaders: (res) => res.setHeader('Cache-Control', 'no-store'),
+}));
 
 const COLS = { courted: COURTED_COLS, zillow: ZILLOW_COLS, realtor: REALTOR_COLS };
 
@@ -85,7 +90,27 @@ app.post('/api/search/:id/stop', (req, res) => {
     res.json({ ok: true });
 });
 
-// SSE stream of a job's events.
+// Incremental results polling (robust alternative to SSE). Client passes the
+// number of rows it has already rendered per source; we return the rest.
+app.get('/api/search/:id/results', (req, res) => {
+    const job = getJob(req.params.id);
+    if (!job) return res.status(404).json({ error: 'job not found' });
+    const out = { status: job.status, sources: {} };
+    for (const s of ['courted', 'zillow', 'realtor']) {
+        const off = Math.max(0, parseInt(req.query[s], 10) || 0);
+        const src = job.sources[s];
+        out.sources[s] = {
+            status: src.status,
+            message: src.message,
+            total: src.total,
+            count: job.rows[s].length,
+            newRows: job.rows[s].slice(off),
+        };
+    }
+    res.json(out);
+});
+
+// SSE stream of a job's events (kept for compatibility).
 app.get('/api/search/:id/stream', (req, res) => {
     const job = getJob(req.params.id);
     if (!job) return res.status(404).end();

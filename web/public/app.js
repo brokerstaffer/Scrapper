@@ -50,7 +50,7 @@ const MONEY_COLS = new Set(['LTM Sales Volume', 'LTM Est GCI', 'LTM Avg Sale Pri
 
 const $ = (id) => document.getElementById(id);
 let currentJob = null;
-let es = null;
+let pollTimer = null;
 const totals = {};   // matched-count per source
 const rowData = {};  // raw rows kept for re-render on toggle
 for (const s of SOURCES) { totals[s] = null; rowData[s] = []; }
@@ -60,7 +60,7 @@ $('searchBtn').addEventListener('click', () => (running ? stopSearch() : startSe
 
 function stopSearch() {
     if (currentJob) fetch(`/api/search/${currentJob}/stop`, { method: 'POST' }).catch(() => {});
-    if (es) es.close();
+    if (pollTimer) clearTimeout(pollTimer);
     running = false;
     $('searchBtn').textContent = 'Search';
     $('searchBtn').classList.remove('stopping');
@@ -91,8 +91,9 @@ document.querySelectorAll('[data-export]').forEach((btn) => {
 });
 
 function startSearch() {
+    // Split on NEW LINES / semicolons only — NOT commas (a "City, ST" has a comma).
     const locations = $('locations').value
-        .split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
+        .split(/[\n;]+/).map((s) => s.trim()).filter(Boolean);
     if (!locations.length) { alert('Enter at least one location or ZIP.'); return; }
 
     const sources = SOURCES.filter((s) => $(`src-${s}`).checked);
@@ -136,36 +137,37 @@ function startSearch() {
         });
 }
 
-function openStream(jobId) {
-    if (es) es.close();
-    es = new EventSource(`/api/search/${jobId}/stream`);
+// Poll for results (robust — SSE/EventSource was dropping the realtor record
+// burst after long fetches). Asks only for rows we haven't rendered yet.
+function openStream(jobId) { poll(jobId); }
 
-    es.addEventListener('record', (e) => addRow(JSON.parse(e.data)));
-    es.addEventListener('meta', (e) => {
-        const d = JSON.parse(e.data);
-        totals[d.source] = d.total;
-        updateCount(d.source);
-    });
-    es.addEventListener('progress', (e) => {
-        const d = JSON.parse(e.data);
-        setStatus(d.source, d.status || 'running', d.message);
-    });
-    es.addEventListener('source_done', (e) => {
-        const d = JSON.parse(e.data);
-        setStatus(d.source, 'done', d.message);
-        enableExport(d.source);
-    });
-    es.addEventListener('source_error', (e) => {
-        const d = JSON.parse(e.data);
-        setStatus(d.source, 'error', d.message, true);
-        enableExport(d.source);
-    });
-    es.addEventListener('complete', () => {
-        running = false;
-        $('searchBtn').textContent = 'Search';
-        $('searchBtn').classList.remove('stopping');
-        es.close();
-    });
+function poll(jobId) {
+    const q = SOURCES.map((s) => `${s}=${rowData[s].length}`).join('&');
+    fetch(`/api/search/${jobId}/results?${q}`)
+        .then((r) => r.json())
+        .then((d) => {
+            if (d.error) { finishRun(); return; }
+            for (const s of SOURCES) {
+                const sc = d.sources[s];
+                if (!sc) continue;
+                if (sc.total != null) totals[s] = sc.total;
+                for (const row of (sc.newRows || [])) addRow({ source: s, row });
+                if (sc.status && sc.status !== 'pending') {
+                    setStatus(s, sc.status, sc.message, sc.status === 'error');
+                    if (sc.status === 'done' || sc.status === 'error') enableExport(s);
+                }
+                updateCount(s);
+            }
+            if (d.status !== 'running') { finishRun(); return; }
+            if (running) pollTimer = setTimeout(() => poll(jobId), 1500);
+        })
+        .catch(() => { if (running) pollTimer = setTimeout(() => poll(jobId), 2000); });
+}
+
+function finishRun() {
+    running = false;
+    $('searchBtn').textContent = 'Search';
+    $('searchBtn').classList.remove('stopping');
 }
 
 function resetUi(sources) {
