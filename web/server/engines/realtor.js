@@ -31,8 +31,9 @@ function realtorSlug(raw) {
 }
 
 function searchUrl(slug, page) {
-    const base = `https://www.realtor.com/realestateagents/${slug}`;
-    return page > 1 ? `${base}/pg-${page}` : base;
+    // Use realtor.com's CANONICAL path (the one it redirects to) so the unblocker
+    // returns the real results page directly instead of a redirect stub.
+    return `https://www.realtor.com/realestateagents/${slug}/intent-both/sort-relevantagents/agenttype-all/pg-${page}`;
 }
 
 /**
@@ -42,17 +43,19 @@ function searchUrl(slug, page) {
  */
 async function fetchRealtor(url, log, forceRender = false) {
     // Retry when the unblocker returns a 200 that ISN'T the real page (no
-    // __NEXT_DATA__) — happens under Bright Data concurrency contention.
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    // __NEXT_DATA__) — happens with redirect stubs / transient unlock misses.
+    const ATTEMPTS = 5;
+    for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
         try {
             const html = await fetchUnblocked(url, { render: forceRender });
             const nd = extractNextData(html);
             if (nd) return nd;
+            log?.warning?.(`realtor: empty page (try ${attempt + 1}/${ATTEMPTS}), retrying…`);
         } catch (err) {
-            if (attempt === 2) throw err;
+            if (attempt === ATTEMPTS - 1) throw err;
             log?.warning?.(`realtor fetch error (try ${attempt + 1}): ${err.message}`);
         }
-        await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+        await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
     }
     return null;
 }
