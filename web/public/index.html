@@ -12,7 +12,7 @@
             <span class="logo">◎</span>
             <div>
                 <h1>Agent Search</h1>
-                <p>Zillow + Courted · live data pull</p>
+                <p>Courted · Zillow · Realtor.com — unified agent intelligence</p>
             </div>
         </div>
         <div class="env" id="env"></div>
@@ -27,10 +27,10 @@
             </label>
 
             <div class="sources">
-                <label class="chk"><input type="checkbox" id="src-courted" checked /> <b>Courted</b> <span class="hint">fast</span></label>
-                <label class="chk"><input type="checkbox" id="src-zillow" checked /> <b>Zillow</b> <span class="hint">proxy</span></label>
-                <label class="chk"><input type="checkbox" id="src-realtor" /> <b>Realtor.com</b> <span class="hint">ZenRows</span></label>
-                <label class="chk" style="margin-left:auto"><input type="checkbox" id="showAll" checked /> Show all columns</label>
+                <label class="chk" data-src="courted"><span class="dot"></span><input type="checkbox" id="src-courted" checked /> <b>Courted</b> <span class="hint">free</span></label>
+                <label class="chk" data-src="zillow"><span class="dot"></span><input type="checkbox" id="src-zillow" checked /> <b>Zillow</b></label>
+                <label class="chk" data-src="realtor"><span class="dot"></span><input type="checkbox" id="src-realtor" /> <b>Realtor.com</b></label>
+                <label class="chk small spacer"><input type="checkbox" id="showAll" checked /> Show all columns</label>
             </div>
 
             <details class="options">

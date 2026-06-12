@@ -34,6 +34,17 @@ fetch('/api/columns')
     .then((cols) => { if (cols && cols.courted) ALL_COLS = cols; })
     .catch(() => {});
 
+// Header status badge — what's connected.
+fetch('/api/status')
+    .then((r) => r.json())
+    .then((s) => {
+        const env = document.getElementById('env');
+        if (!env) return;
+        const ok = (label, on) => `<span class="${on ? 'ok' : 'bad'}">${on ? '●' : '○'} ${label}</span>`;
+        env.innerHTML = `${ok('Courted', s.courted)} &nbsp; ${ok(`Unblocker${s.unblocker ? ' · ' + s.unblocker : ''}`, !!s.unblocker)}`;
+    })
+    .catch(() => {});
+
 const URL_COLS = new Set(['Zillow Profile URL', 'Courted Profile URL', 'Realtor Profile URL', 'Profile Photo URL', 'Website URL', 'Facebook URL', 'Instagram URL', 'LinkedIn URL', 'Twitter URL', 'YouTube URL', 'TikTok URL']);
 const MONEY_COLS = new Set(['LTM Sales Volume', 'LTM Est GCI', 'LTM Avg Sale Price', 'YTD Sales Volume']);
 

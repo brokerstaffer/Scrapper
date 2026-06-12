@@ -30,6 +30,12 @@ const COLS = { courted: COURTED_COLS, zillow: ZILLOW_COLS, realtor: REALTOR_COLS
 // Full column lists per source (so the UI can show every field).
 app.get('/api/columns', (_req, res) => res.json(COLS));
 
+// What's configured (for the header status badge).
+app.get('/api/status', (_req, res) => res.json({
+    courted: Boolean(process.env.COURTED_EMAIL && process.env.COURTED_PASSWORD),
+    unblocker: unblockerProvider() || null,
+}));
+
 // Start a search. Body: { locations:[], sources:[], options... }
 app.post('/api/search', (req, res) => {
     const b = req.body || {};
@@ -95,8 +101,7 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`\n  Agent Search webapp → http://localhost:${PORT}\n`);
     console.log(`  Courted creds: ${process.env.COURTED_EMAIL ? 'set ✓' : 'NOT SET ✗ (web/.env)'}`);
-    console.log(`  Zillow proxy:  ${process.env.ZILLOW_PROXY_URL ? 'set ✓' : 'not set (Zillow may be blocked)'}`);
-    console.log(`  Realtor unblocker: ${unblockerProvider() || 'NONE (realtor.com disabled)'}\n`);
+    console.log(`  Unblocker:     ${unblockerProvider() || 'NONE — Zillow + realtor.com disabled'}  (Zillow + realtor.com)\n`);
 });
 
 // --- helpers ---
