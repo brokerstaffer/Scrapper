@@ -55,7 +55,20 @@ const totals = {};   // matched-count per source
 const rowData = {};  // raw rows kept for re-render on toggle
 for (const s of SOURCES) { totals[s] = null; rowData[s] = []; }
 
-$('searchBtn').addEventListener('click', startSearch);
+let running = false;
+$('searchBtn').addEventListener('click', () => (running ? stopSearch() : startSearch()));
+
+function stopSearch() {
+    if (currentJob) fetch(`/api/search/${currentJob}/stop`, { method: 'POST' }).catch(() => {});
+    if (es) es.close();
+    running = false;
+    $('searchBtn').textContent = 'Search';
+    $('searchBtn').classList.remove('stopping');
+    for (const s of SOURCES) {
+        const pill = $(`status-${s}`);
+        if (pill && /running|queued/.test(pill.textContent)) setStatus(s, 'done', 'stopped');
+    }
+}
 $('showAll').addEventListener('change', (e) => {
     showAllCols = e.target.checked;
     for (const src of SOURCES) rerender(src);
@@ -100,8 +113,9 @@ function startSearch() {
     };
 
     resetUi(sources);
-    $('searchBtn').disabled = true;
-    $('searchBtn').textContent = 'Searching…';
+    running = true;
+    $('searchBtn').textContent = 'Stop';
+    $('searchBtn').classList.add('stopping');
 
     fetch('/api/search', {
         method: 'POST',
@@ -116,8 +130,9 @@ function startSearch() {
         })
         .catch((err) => {
             alert(err.message);
-            $('searchBtn').disabled = false;
+            running = false;
             $('searchBtn').textContent = 'Search';
+            $('searchBtn').classList.remove('stopping');
         });
 }
 
@@ -146,8 +161,9 @@ function openStream(jobId) {
         enableExport(d.source);
     });
     es.addEventListener('complete', () => {
-        $('searchBtn').disabled = false;
+        running = false;
         $('searchBtn').textContent = 'Search';
+        $('searchBtn').classList.remove('stopping');
         es.close();
     });
 }

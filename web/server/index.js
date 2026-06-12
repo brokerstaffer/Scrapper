@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync, existsSync } from 'node:fs';
 
-import { createJob, getJob, emit, subscribe, unsubscribe } from './jobs.js';
+import { createJob, getJob, emit, subscribe, unsubscribe, abortJob } from './jobs.js';
 import { runCourted } from './engines/courted.js';
 import { runZillow } from './engines/zillow.js';
 import { runRealtor } from './engines/realtor.js';
@@ -75,6 +75,14 @@ app.post('/api/search', (req, res) => {
     if (sources.includes('realtor')) runRealtor(job);
 
     res.json({ jobId: job.id, params });
+});
+
+// Stop a running search.
+app.post('/api/search/:id/stop', (req, res) => {
+    const job = getJob(req.params.id);
+    if (!job) return res.status(404).json({ error: 'job not found' });
+    abortJob(job);
+    res.json({ ok: true });
 });
 
 // SSE stream of a job's events.

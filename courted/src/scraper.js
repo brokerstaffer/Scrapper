@@ -38,7 +38,7 @@ export function parseLocation(raw) {
  * @param {object} deps  { log, onRecord(row), session? }
  * @returns {Promise<{ pushed: number }>}
  */
-export async function runScrape(config, { log = console, onRecord, onMeta }) {
+export async function runScrape(config, { log = console, onRecord, onMeta, shouldStop }) {
     const {
         email,
         password,
@@ -66,6 +66,7 @@ export async function runScrape(config, { log = console, onRecord, onMeta }) {
     let pushed = 0;
 
     for (const loc of searches) {
+        if (shouldStop?.()) return { pushed };
         const label = loc ? loc.label : '(all agents)';
         let offset = 0;
         let perLoc = 0;
@@ -74,6 +75,7 @@ export async function runScrape(config, { log = console, onRecord, onMeta }) {
         log.info?.(`Searching ${label} ...`);
 
         while (offset < total) {
+            if (shouldStop?.()) return { pushed };
             if (maxRecords && pushed >= maxRecords) {
                 log.info?.(`Reached maxRecords (${maxRecords}).`);
                 return { pushed };

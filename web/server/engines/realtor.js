@@ -88,6 +88,7 @@ async function crawl(job) {
         emit(job, 'progress', { source, status: 'running', message: `Querying realtor.com via ${activeProvider()}…` });
 
         for (const raw of locations) {
+            if (job.aborted) break;
             const slug = realtorSlug(raw);
             log.info(`realtor.com: ${raw} (${slug})…`);
 
@@ -116,7 +117,7 @@ async function crawl(job) {
             };
             ingest(pp.agents);
 
-            for (let p = 2; p <= maxPages && collected.length < cap; p += 1) {
+            for (let p = 2; p <= maxPages && collected.length < cap && !job.aborted; p += 1) {
                 try {
                     const nd2 = await fetchRealtor(searchUrl(slug, p), log);
                     const pp2 = nd2 && nd2.props && nd2.props.pageProps
@@ -139,6 +140,7 @@ async function crawl(job) {
             let idx = 0;
             const worker = async () => {
                 while (idx < queue.length) {
+                    if (job.aborted) return;
                     const i = idx; idx += 1;
                     const { rec, id } = queue[i];
                     if (id) {

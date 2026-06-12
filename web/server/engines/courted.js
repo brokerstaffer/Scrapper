@@ -38,6 +38,7 @@ export async function runCourted(job) {
             },
             {
                 log,
+                shouldStop: () => job.aborted,
                 onRecord: (row) => emit(job, 'record', { source, row }),
                 onMeta: ({ total: t }) => {
                     total += t || 0;

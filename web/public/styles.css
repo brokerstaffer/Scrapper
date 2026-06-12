@@ -120,6 +120,7 @@ button.primary {
 button.primary:hover { transform: translateY(-1px); box-shadow: 0 12px 30px -6px rgba(124, 92, 255, 0.7); }
 button.primary:active { transform: translateY(0); }
 button.primary:disabled { opacity: .55; cursor: default; box-shadow: none; transform: none; }
+button.primary.stopping { background: linear-gradient(135deg, #ff5d6c, #ff8a3d); box-shadow: 0 8px 24px -6px rgba(255, 93, 108, 0.5); }
 button.ghost {
     background: var(--bg-1); color: var(--text); border: 1px solid var(--line-strong);
     border-radius: 9px; padding: 7px 14px; font-size: 12px; cursor: pointer; font-weight: 550;

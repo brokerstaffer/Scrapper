@@ -16,12 +16,32 @@ export function activeProvider() {
     return '';
 }
 
-/** Fetch a page's HTML through the configured unblocker. */
+// Global concurrency limiter — shared across ALL engines (Zillow + realtor) so
+// one engine's burst can't starve the other and trip the provider's limits.
+const MAX_CONCURRENT = Number(process.env.UNBLOCKER_MAX_CONCURRENT) || 8;
+let active = 0;
+const waiters = [];
+function acquire() {
+    if (active < MAX_CONCURRENT) { active += 1; return Promise.resolve(); }
+    return new Promise((resolve) => waiters.push(resolve)).then(() => { active += 1; });
+}
+function release() {
+    active -= 1;
+    const next = waiters.shift();
+    if (next) next();
+}
+
+/** Fetch a page's HTML through the configured unblocker (globally rate-limited). */
 export async function fetchUnblocked(targetUrl, opts = {}) {
     const provider = activeProvider();
-    if (provider === 'brightdata') return fetchBrightData(targetUrl, opts);
-    if (provider === 'zenrows') return fetchZenRows(targetUrl, opts);
-    throw new Error('No unblocker configured (set BRIGHTDATA_API_TOKEN or ZENROWS_API_KEY).');
+    if (!provider) throw new Error('No unblocker configured (set BRIGHTDATA_API_TOKEN or ZENROWS_API_KEY).');
+    await acquire();
+    try {
+        if (provider === 'brightdata') return await fetchBrightData(targetUrl, opts);
+        return await fetchZenRows(targetUrl, opts);
+    } finally {
+        release();
+    }
 }
 
 // --- Bright Data Web Unlocker (auto-renders; one flat call) ---

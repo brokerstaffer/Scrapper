@@ -16,6 +16,7 @@ export function createJob(params) {
         params,
         createdAt: Date.now(),
         status: 'running',         // running | done | error
+        aborted: false,            // set by /stop — engines wind down
         events: [],                // full event log (for late subscribers + replay)
         subscribers: new Set(),    // Set<res> (SSE responses)
         rows: { zillow: [], courted: [], realtor: [] },
@@ -37,6 +38,14 @@ export function createJob(params) {
 
 export function getJob(id) {
     return jobs.get(id);
+}
+
+/** Signal a running job to stop; engines check job.aborted and wind down. */
+export function abortJob(job) {
+    if (job && job.status === 'running') {
+        job.aborted = true;
+        emit(job, 'progress', { source: '_', status: 'running', message: 'Stopping…' });
+    }
 }
 
 /** Emit an event to a job: buffered + fanned out to all live subscribers. */

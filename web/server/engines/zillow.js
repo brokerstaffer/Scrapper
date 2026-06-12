@@ -72,6 +72,7 @@ async function crawl(job) {
         emit(job, 'progress', { source, status: 'running', message: `Querying Zillow via ${activeProvider()}…` });
 
         for (const raw of locations) {
+            if (job.aborted) break;
             const location = parseLocation(raw);
             log.info(`Zillow: ${location.full}…`);
 
@@ -91,6 +92,7 @@ async function crawl(job) {
                 let i = 0;
                 const worker = async () => {
                     while (i < pageNums.length) {
+                        if (job.aborted) return;
                         const p = pageNums[i]; i += 1;
                         try {
                             const r = await fetchSearch(browser, buildSearchUrl(location.slug, p), location, log);
@@ -150,6 +152,7 @@ async function enrichZillow(job, agents, opts, log, browser) {
     let idx = 0;
     const worker = async () => {
         while (idx < queue.length) {
+            if (job.aborted) return;
             const a = queue[idx]; idx += 1;
             try {
                 const html = await fetchUnblocked(a['Zillow Profile URL'], { render: true });
