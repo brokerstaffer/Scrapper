@@ -40,10 +40,21 @@ function searchUrl(slug, page) {
  *  - Search pages are server-rendered → try cheap (no JS render) first, ~10 credits.
  *  - Profile pages need JS rendering → go straight to render (forceRender), ~25 credits.
  */
-async function fetchRealtor(url, _log, forceRender = false) {
-    // Bright Data auto-renders; ZenRows uses render only for profile pages.
-    const html = await fetchUnblocked(url, { render: forceRender });
-    return extractNextData(html);
+async function fetchRealtor(url, log, forceRender = false) {
+    // Retry when the unblocker returns a 200 that ISN'T the real page (no
+    // __NEXT_DATA__) — happens under Bright Data concurrency contention.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+            const html = await fetchUnblocked(url, { render: forceRender });
+            const nd = extractNextData(html);
+            if (nd) return nd;
+        } catch (err) {
+            if (attempt === 2) throw err;
+            log?.warning?.(`realtor fetch error (try ${attempt + 1}): ${err.message}`);
+        }
+        await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+    }
+    return null;
 }
 
 async function crawl(job) {
@@ -74,7 +85,7 @@ async function crawl(job) {
     let pushed = 0;
 
     try {
-        emit(job, 'progress', { source, status: 'running', message: 'Querying realtor.com via ZenRows…' });
+        emit(job, 'progress', { source, status: 'running', message: `Querying realtor.com via ${activeProvider()}…` });
 
         for (const raw of locations) {
             const slug = realtorSlug(raw);
