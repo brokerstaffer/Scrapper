@@ -1,9 +1,18 @@
 .git
 .DS_Store
 node_modules
+**/node_modules
 storage
+**/storage
 apify_storage
 crawlee_storage
+output
+**/output
+recon
 *.log
+*.csv
 test
+web/.env
+**/.env
 ZILLOW APIFY ACTOR — Claude Code Project Brief.txt
+Pricing-And-Publishing-Guide.html

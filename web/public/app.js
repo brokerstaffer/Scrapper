@@ -1,7 +1,8 @@
 // app.js — frontend: kick off a search, stream results into two live tables.
 
-// Columns shown in each table (full field set is in the CSV export).
-const DISPLAY_COLS = {
+// Compact "key columns" view (toggle). The FULL column set (76 Courted / 47
+// Zillow) is loaded from the server and is the default.
+const KEY_COLS = {
     courted: [
         'Name', 'Office', 'Email', 'Phone', 'Years Of Experience',
         'LTM Sales Volume', 'Sales Volume Change %', 'LTM Closed Units',
@@ -14,6 +15,16 @@ const DISPLAY_COLS = {
     ],
 };
 
+// Full column lists from the server (fallback to KEY_COLS until loaded).
+let ALL_COLS = { courted: [...KEY_COLS.courted], zillow: [...KEY_COLS.zillow] };
+let showAllCols = true; // default: show every column
+const DISPLAY_COLS = () => (showAllCols ? ALL_COLS : KEY_COLS);
+
+fetch('/api/columns')
+    .then((r) => r.json())
+    .then((cols) => { if (cols && cols.courted && cols.zillow) ALL_COLS = cols; })
+    .catch(() => {});
+
 const URL_COLS = new Set(['Zillow Profile URL', 'Courted Profile URL', 'Profile Photo URL', 'Website URL']);
 const MONEY_COLS = new Set(['LTM Sales Volume', 'LTM Est GCI', 'LTM Avg Sale Price', 'YTD Sales Volume']);
 
@@ -21,8 +32,24 @@ const $ = (id) => document.getElementById(id);
 let currentJob = null;
 let es = null;
 const totals = { courted: null, zillow: null }; // matched-count per source
+const rowData = { courted: [], zillow: [] };     // raw rows kept for re-render on toggle
 
 $('searchBtn').addEventListener('click', startSearch);
+$('showAll').addEventListener('change', (e) => {
+    showAllCols = e.target.checked;
+    for (const src of ['courted', 'zillow']) rerender(src);
+});
+
+// Rebuild a whole table (header + all rows) from stored data — used on toggle.
+function rerender(source) {
+    const cols = DISPLAY_COLS()[source];
+    $(`table-${source}`).querySelector('thead').innerHTML =
+        '<tr>' + cols.map((c) => `<th>${c}</th>`).join('') + '</tr>';
+    const tbody = $(`table-${source}`).querySelector('tbody');
+    tbody.innerHTML = rowData[source]
+        .map((row) => '<tr>' + cols.map((c) => `<td title="${escapeAttr(row[c])}">${cell(c, row[c])}</td>`).join('') + '</tr>')
+        .join('');
+}
 document.querySelectorAll('[data-export]').forEach((btn) => {
     btn.addEventListener('click', () => {
         if (currentJob) window.location = `/api/search/${currentJob}/export?source=${btn.dataset.export}`;
@@ -106,11 +133,14 @@ function openStream(jobId) {
 function resetUi(sources) {
     totals.courted = null;
     totals.zillow = null;
+    rowData.courted = [];
+    rowData.zillow = [];
+    showAllCols = $('showAll').checked;
     for (const src of ['courted', 'zillow']) {
         const active = sources.includes(src);
         $(`panel-${src}`).style.opacity = active ? '1' : '0.4';
         $(`table-${src}`).querySelector('thead').innerHTML =
-            '<tr>' + DISPLAY_COLS[src].map((c) => `<th>${c}</th>`).join('') + '</tr>';
+            '<tr>' + DISPLAY_COLS()[src].map((c) => `<th>${c}</th>`).join('') + '</tr>';
         $(`table-${src}`).querySelector('tbody').innerHTML = '';
         $(`count-${src}`).textContent = '0';
         $(`msg-${src}`).textContent = '';
@@ -121,8 +151,9 @@ function resetUi(sources) {
 }
 
 function addRow({ source, row }) {
+    rowData[source].push(row);
     const tbody = $(`table-${source}`).querySelector('tbody');
-    const cols = DISPLAY_COLS[source];
+    const cols = DISPLAY_COLS()[source];
     const tr = document.createElement('tr');
     tr.className = 'new';
     tr.innerHTML = cols.map((c) => `<td title="${escapeAttr(row[c])}">${cell(c, row[c])}</td>`).join('');

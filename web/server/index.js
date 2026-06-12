@@ -24,6 +24,9 @@ app.use(express.static(path.join(ROOT, 'web/public')));
 
 const COLS = { courted: COURTED_COLS, zillow: ZILLOW_COLS };
 
+// Full column lists per source (so the UI can show every field).
+app.get('/api/columns', (_req, res) => res.json(COLS));
+
 // Start a search. Body: { locations:[], sources:[], options... }
 app.post('/api/search', (req, res) => {
     const b = req.body || {};
