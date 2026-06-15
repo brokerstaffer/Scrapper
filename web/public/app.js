@@ -168,6 +168,53 @@ function finishRun() {
     running = false;
     $('searchBtn').textContent = 'Search';
     $('searchBtn').classList.remove('stopping');
+    // Enable the master-list builder once a job has produced rows.
+    const anyRows = SOURCES.some((s) => rowData[s].length);
+    $('buildMaster').disabled = !(currentJob && anyRows);
+}
+
+// --- Master (deduplicated) list ---
+let masterCols = [];
+$('buildMaster').addEventListener('click', buildMaster);
+$('exportMaster').addEventListener('click', () => {
+    if (currentJob) window.location = `/api/search/${currentJob}/export?source=master`;
+});
+
+function buildMaster() {
+    if (!currentJob) return;
+    $('buildMaster').disabled = true;
+    $('masterStats').textContent = 'Analyzing & matching agents across platforms…';
+    fetch(`/api/search/${currentJob}/master`)
+        .then((r) => r.json())
+        .then((d) => {
+            if (d.error) throw new Error(d.error);
+            masterCols = d.columns;
+            renderMaster(d.rows);
+            const s = d.stats;
+            $('masterStats').innerHTML =
+                `<b>${s.unique.toLocaleString()}</b> unique agents `
+                + `&nbsp;·&nbsp; <b>${s.duplicatesRemoved.toLocaleString()}</b> duplicates merged `
+                + `&nbsp;·&nbsp; <b>${s.multiPlatform.toLocaleString()}</b> found on 2+ platforms `
+                + `&nbsp;<span class="hint">(from ${s.totalScraped.toLocaleString()} scraped — `
+                + `Courted ${s.bySource.courted}, Zillow ${s.bySource.zillow}, Realtor ${s.bySource.realtor})</span>`;
+            $('exportMaster').disabled = d.rows.length === 0;
+            $('buildMaster').disabled = false;
+            $('buildMaster').textContent = 'Rebuild master list';
+        })
+        .catch((err) => {
+            $('masterStats').textContent = 'Master build failed: ' + err.message;
+            $('buildMaster').disabled = false;
+        });
+}
+
+function renderMaster(rows) {
+    $('table-master').querySelector('thead').innerHTML =
+        '<tr>' + masterCols.map((c) => `<th>${c}</th>`).join('') + '</tr>';
+    $('table-master').querySelector('tbody').innerHTML = rows.map((row) => {
+        const pc = Number(row['Platform Count']) || 1;
+        const cls = pc > 1 ? ' class="multi"' : '';
+        return `<tr${cls}>` + masterCols.map((c) => `<td title="${escapeAttr(row[c])}">${cell(c, row[c])}</td>`).join('') + '</tr>';
+    }).join('');
 }
 
 function resetUi(sources) {

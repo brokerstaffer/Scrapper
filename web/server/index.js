@@ -14,6 +14,7 @@ import { activeProvider as unblockerProvider } from './unblocker.js';
 import { OUTPUT_COLUMNS as COURTED_COLS } from '../../courted/src/constants.js';
 import { OUTPUT_COLUMNS as ZILLOW_COLS } from '../../src/constants.js';
 import { OUTPUT_COLUMNS as REALTOR_COLS } from './engines/realtor-map.js';
+import { buildMaster, MASTER_COLUMNS } from './merge.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '../..');
@@ -118,10 +119,24 @@ app.get('/api/search/:id/stream', (req, res) => {
     req.on('close', () => unsubscribe(job, res));
 });
 
-// CSV export of one source's rows.
+// De-duplicated master list across all sources (JSON, for the UI table).
+app.get('/api/search/:id/master', (req, res) => {
+    const job = getJob(req.params.id);
+    if (!job) return res.status(404).json({ error: 'job not found' });
+    const { rows, stats } = buildMaster(job.rows);
+    res.json({ columns: MASTER_COLUMNS, rows, stats });
+});
+
+// CSV export of one source's rows — or the merged master list (source=master).
 app.get('/api/search/:id/export', (req, res) => {
     const job = getJob(req.params.id);
     if (!job) return res.status(404).send('job not found');
+    if (req.query.source === 'master') {
+        const { rows } = buildMaster(job.rows);
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename="master-agents-deduped.csv"');
+        return res.send(toCsv(rows, MASTER_COLUMNS));
+    }
     const source = ['zillow', 'realtor', 'courted'].includes(req.query.source) ? req.query.source : 'courted';
     const rows = job.rows[source] || [];
     const cols = COLS[source];

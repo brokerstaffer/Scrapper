@@ -106,6 +106,18 @@
                 <div class="table-wrap"><table id="table-realtor"><thead></thead><tbody></tbody></table></div>
             </div>
         </section>
+
+        <section class="panel master" id="panel-master">
+            <div class="panel-head">
+                <h2>★ Master List <span class="hint">deduplicated across all sources</span></h2>
+                <div class="panel-actions">
+                    <button id="buildMaster" class="primary small" disabled>Build master list</button>
+                    <button class="ghost" id="exportMaster" disabled>Export CSV</button>
+                </div>
+            </div>
+            <div class="master-stats" id="masterStats">Run a search, then build a combined unique list — same agent across Courted / Zillow / Realtor is merged into one row.</div>
+            <div class="table-wrap"><table id="table-master"><thead></thead><tbody></tbody></table></div>
+        </section>
     </main>
 
     <script src="app.js"></script>
