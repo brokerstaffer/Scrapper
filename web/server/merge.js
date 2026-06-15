@@ -13,19 +13,25 @@
 
 const SOURCE_ORDER = ['courted', 'realtor', 'zillow']; // value-preference order
 
-// The unified columns a master row carries.
-export const MASTER_COLUMNS = [
-    'Name', 'Sources', 'Platform Count', 'Match Basis',
-    'First Name', 'Last Name',
-    'Phone', 'Mobile Phone', 'Email',
-    'Office / Brokerage', 'License Number', 'License State',
-    'City', 'State',
-    'Years Of Experience', 'Rating', 'Review Count',
-    'For Sale Count', 'Sold Count', 'Total Sales Count', 'LTM Sales Volume',
-    'Served Areas',
-    'Courted Profile URL', 'Zillow Profile URL', 'Realtor Profile URL',
-    'Profile Photo URL', 'Website URL',
-];
+// Meta columns the master adds in front of the (unioned) source columns.
+const META_COLUMNS = ['Sources', 'Platform Count', 'Match Basis'];
+
+/**
+ * The master carries EVERY column from all three source exports (deduped by
+ * name), so no field from any platform is lost — plus the meta columns. Order:
+ * Name, meta, then Courted's columns, then Zillow's new ones, then Realtor's.
+ */
+function buildColumns(sourceColumns) {
+    const cols = sourceColumns || {};
+    const order = ['Name', ...META_COLUMNS];
+    const seen = new Set(order);
+    for (const src of ['courted', 'zillow', 'realtor']) {
+        for (const c of (cols[src] || [])) {
+            if (!seen.has(c)) { seen.add(c); order.push(c); }
+        }
+    }
+    return order;
+}
 
 // For each master column, the candidate source-column names to read from (the
 // three sources name the same concept differently).
@@ -118,9 +124,10 @@ function makeUF(n) {
 /**
  * Build the de-duplicated master list.
  * @param {{courted:object[], zillow:object[], realtor:object[]}} bySource
- * @returns {{rows:object[], stats:object}}
+ * @param {{courted:string[], zillow:string[], realtor:string[]}} sourceColumns
+ * @returns {{columns:string[], rows:object[], stats:object}}
  */
-export function buildMaster(bySource) {
+export function buildMaster(bySource, sourceColumns) {
     const nodes = [];
     for (const source of ['courted', 'zillow', 'realtor']) {
         for (const row of (bySource[source] || [])) nodes.push(canon(row, source));
@@ -169,6 +176,7 @@ export function buildMaster(bySource) {
 
     const totalScraped = ['courted', 'zillow', 'realtor'].reduce((n, s) => n + (bySource[s] || []).length, 0);
     return {
+        columns: buildColumns(sourceColumns),
         rows,
         stats: {
             totalScraped,
@@ -184,19 +192,19 @@ export function buildMaster(bySource) {
     };
 }
 
-// Fuse a cluster of canonical records into one master row.
+// Fuse a cluster of canonical records into one master row. Every field from
+// every member is carried over; when two sources fill the SAME column name, the
+// source-preference order (Courted > Realtor > Zillow) wins.
 function fuse(members) {
-    // Source-preference order for value selection.
     const ordered = [...members].sort(
         (a, b) => SOURCE_ORDER.indexOf(a.source) - SOURCE_ORDER.indexOf(b.source));
 
     const out = {};
-    for (const col of MASTER_COLUMNS) {
-        const cols = FIELD_MAP[col];
-        if (!cols) continue;
-        let val = '';
-        for (const m of ordered) { val = pick(m.row, cols); if (val) break; }
-        out[col] = val;
+    for (const m of ordered) {
+        for (const [k, v] of Object.entries(m.row)) {
+            if (v == null || String(v).trim() === '') continue;
+            if (out[k] == null || out[k] === '') out[k] = v;
+        }
     }
 
     const sources = [...new Set(ordered.map((m) => m.source))]
@@ -204,7 +212,7 @@ function fuse(members) {
         .map((s) => s.charAt(0).toUpperCase() + s.slice(1));
     out['Sources'] = sources.join(', ');
     out['Platform Count'] = String(new Set(members.map((m) => m.source)).size);
-    out['Match Basis'] = members.length > 1 ? matchBasis(members) : '—';
+    out['Match Basis'] = members.length > 1 ? matchBasis(members) : '';
     return out;
 }
 
