@@ -114,6 +114,54 @@ function harvestKeys(root, wantedKeys) {
 }
 
 /**
+ * Read licenses straight from props.pageProps.agentLicenses — the array Zillow
+ * uses to render the "See license information" modal. Each entry looks like
+ * { text:"000099950-0", state:"AL", status:"active", license_type:"agent",
+ *   expiration:"2026-09-30" }. This is the reliable source (the generic tree
+ * walk in harvestLicense() misses it because the number lives under `text`).
+ * Returns true if it populated anything.
+ */
+function extractAgentLicenses(json, agent) {
+    const pp = json && json.props && json.props.pageProps;
+    const list = pp && Array.isArray(pp.agentLicenses) ? pp.agentLicenses : null;
+    if (!list || !list.length) return false;
+
+    const norm = list
+        .map((l) => ({
+            num: String(l.text || '').trim(),
+            state: String(l.state || '').trim().toUpperCase(),
+            status: String(l.status || l.original_status || '').trim().toLowerCase(),
+            type: String(l.license_type || '').trim().toLowerCase(),
+        }))
+        .filter((l) => l.num);
+    if (!norm.length) return false;
+
+    // Primary = an active agent license if we have one, else any active, else
+    // the first agent license, else the first entry.
+    const primary = norm.find((l) => l.status === 'active' && l.type === 'agent')
+        || norm.find((l) => l.status === 'active')
+        || norm.find((l) => l.type === 'agent')
+        || norm[0];
+
+    const describe = (t) => ({
+        agent: 'Real Estate Agent',
+        broker: 'Real Estate Broker',
+        salesperson: 'Real Estate Salesperson',
+        appraiser: 'Real Estate Appraiser',
+    }[t] || (t ? t.charAt(0).toUpperCase() + t.slice(1) : ''));
+
+    if (!agent['License Number']) agent['License Number'] = primary.num;
+    if (!agent['License State']) agent['License State'] = primary.state;
+    if (!agent['License Description']) agent['License Description'] = describe(primary.type);
+    if (!agent['All Licenses']) {
+        agent['All Licenses'] = norm
+            .map((l) => `${l.num}${l.state ? ` (${l.state})` : ''}${l.status ? ` - ${l.status}` : ''}`)
+            .join('; ');
+    }
+    return true;
+}
+
+/**
  * Find the agent's real-estate license(s) inside the __NEXT_DATA__ JSON. Zillow
  * renders the "See license information" modal from an array of license objects,
  * each carrying a number, an issuing state, and/or a description. We walk the
@@ -265,8 +313,9 @@ async function extractFromNextData(page, agent, log) {
 
     const harvested = harvestKeys(json, wanted);
 
-    // Licenses come from a dedicated walk (number + issuing state + description).
-    harvestLicense(json, agent);
+    // Licenses: prefer the precise agentLicenses array; fall back to the generic
+    // tree walk only when that array is absent.
+    if (!extractAgentLicenses(json, agent)) harvestLicense(json, agent);
 
     for (const [col, keys] of Object.entries(NEXT_DATA_FIELD_MAP)) {
         if (agent[col]) continue; // never overwrite Step 1 data

@@ -41,7 +41,6 @@ export const OUTPUT_COLUMNS = [
     'Title',
     'Address',               // (added) — sits with Brokerage Address
     'Brokerage Address',
-    'Brokerage Phone',
     'Website URL',
     'Facebook URL',
     'LinkedIn URL',
@@ -53,7 +52,6 @@ export const OUTPUT_COLUMNS = [
     'License State',         // (added) — sits with License Number
     'License Description',   // (added)
     'All Licenses',          // (added) — every license entry from the modal
-    'Rental Listings Count',
 ];
 
 // Rotated to vary the browser fingerprint between requests.
