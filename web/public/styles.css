@@ -104,10 +104,29 @@ input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent);
 
 .options summary { cursor: pointer; color: var(--muted); font-size: 13px; user-select: none; padding: 4px 0; }
 .options summary:hover { color: var(--text); }
-.opt-grid {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+/* Per-source option groups: one column each for Courted / Zillow / Realtor. */
+.opt-sources {
+    display: grid; grid-template-columns: repeat(3, 1fr);
     gap: 16px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line);
 }
+@media (max-width: 860px) { .opt-sources { grid-template-columns: 1fr; } }
+.opt-group {
+    display: flex; flex-direction: column; gap: 12px;
+    background: var(--bg-1); border: 1px solid var(--line);
+    border-radius: 12px; padding: 14px; position: relative; overflow: hidden;
+}
+.opt-group::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+.opt-group[data-src="courted"]::before { background: var(--courted); }
+.opt-group[data-src="zillow"]::before { background: var(--zillow); }
+.opt-group[data-src="realtor"]::before { background: var(--realtor); }
+.opt-group-head {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 650; color: var(--text); letter-spacing: -0.01em;
+}
+.opt-group-head .dot { width: 9px; height: 9px; border-radius: 50%; }
+.opt-group[data-src="courted"] .dot { background: var(--courted); }
+.opt-group[data-src="zillow"] .dot { background: var(--zillow); }
+.opt-group[data-src="realtor"] .dot { background: var(--realtor); }
 .field.small > span, .chk.small { font-size: 12px; }
 .chk.small { padding: 8px 12px; }
 

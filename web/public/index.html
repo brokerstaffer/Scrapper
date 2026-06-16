@@ -35,34 +35,45 @@
 
             <details class="options">
                 <summary>Options</summary>
-                <div class="opt-grid">
-                    <label class="field small">
-                        <span>Courted max results <span class="hint">(0 = all)</span></span>
-                        <input type="number" id="courtedMax" value="0" min="0" />
-                    </label>
-                    <label class="field small">
-                        <span>Min LTM sales volume ($)</span>
-                        <input type="number" id="minSalesVolume" value="0" min="0" />
-                    </label>
-                    <label class="chk small"><input type="checkbox" id="courtedEnrich" /> Courted enrich (mobile, office address…)</label>
-                    <label class="field small">
-                        <span>Zillow max pages / location <span class="hint">(max 25)</span></span>
-                        <input type="number" id="zillowMaxPages" value="25" min="1" max="25" />
-                    </label>
-                    <label class="field small">
-                        <span>Zillow concurrency <span class="hint">(4 safe · higher = faster/riskier)</span></span>
-                        <input type="number" id="zillowConcurrency" value="4" min="1" max="12" />
-                    </label>
-                    <label class="chk small"><input type="checkbox" id="zillowEnrich" /> Zillow enrich (profile pages — phone, email, license)</label>
-                    <label class="field small">
-                        <span>Realtor max results <span class="hint">(0 = all · costs credits)</span></span>
-                        <input type="number" id="realtorMax" value="50" min="0" />
-                    </label>
-                    <label class="field small">
-                        <span>Realtor enrich concurrency</span>
-                        <input type="number" id="realtorConcurrency" value="3" min="1" max="8" />
-                    </label>
-                    <label class="chk small"><input type="checkbox" id="realtorEnrich" /> Realtor enrich (phone, license, areas — 1 credit-call/agent)</label>
+                <div class="opt-sources">
+                    <div class="opt-group" data-src="courted">
+                        <div class="opt-group-head"><span class="dot"></span> Courted</div>
+                        <label class="field small">
+                            <span>Max results <span class="hint">(0 = all)</span></span>
+                            <input type="number" id="courtedMax" value="0" min="0" />
+                        </label>
+                        <label class="field small">
+                            <span>Min LTM sales volume ($)</span>
+                            <input type="number" id="minSalesVolume" value="0" min="0" />
+                        </label>
+                        <label class="chk small"><input type="checkbox" id="courtedEnrich" /> Enrich <span class="hint">(mobile, office address…)</span></label>
+                    </div>
+
+                    <div class="opt-group" data-src="zillow">
+                        <div class="opt-group-head"><span class="dot"></span> Zillow</div>
+                        <label class="field small">
+                            <span>Max pages / location <span class="hint">(max 25)</span></span>
+                            <input type="number" id="zillowMaxPages" value="25" min="1" max="25" />
+                        </label>
+                        <label class="field small">
+                            <span>Concurrency <span class="hint">(4 safe · higher = faster/riskier)</span></span>
+                            <input type="number" id="zillowConcurrency" value="4" min="1" max="12" />
+                        </label>
+                        <label class="chk small"><input type="checkbox" id="zillowEnrich" /> Enrich <span class="hint">(profile pages — phone, email, license)</span></label>
+                    </div>
+
+                    <div class="opt-group" data-src="realtor">
+                        <div class="opt-group-head"><span class="dot"></span> Realtor.com</div>
+                        <label class="field small">
+                            <span>Max results <span class="hint">(0 = all · costs credits)</span></span>
+                            <input type="number" id="realtorMax" value="50" min="0" />
+                        </label>
+                        <label class="field small">
+                            <span>Enrich concurrency</span>
+                            <input type="number" id="realtorConcurrency" value="3" min="1" max="8" />
+                        </label>
+                        <label class="chk small"><input type="checkbox" id="realtorEnrich" /> Enrich <span class="hint">(phone, license, areas — 1 credit-call/agent)</span></label>
+                    </div>
                 </div>
             </details>
 
