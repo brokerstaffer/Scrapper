@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { readFileSync, existsSync } from 'node:fs';
 
 import { createJob, getJob, emit, subscribe, unsubscribe, abortJob } from './jobs.js';
-import { runCourted } from './engines/courted.js';
+import { runCourted, readCourtedAccounts } from './engines/courted.js';
 import { runZillow } from './engines/zillow.js';
 import { runRealtor } from './engines/realtor.js';
 import { activeProvider as unblockerProvider } from './unblocker.js';
@@ -37,10 +37,14 @@ const COLS = { courted: COURTED_COLS, zillow: ZILLOW_COLS, realtor: REALTOR_COLS
 app.get('/api/columns', (_req, res) => res.json(COLS));
 
 // What's configured (for the header status badge).
-app.get('/api/status', (_req, res) => res.json({
-    courted: Boolean(process.env.COURTED_EMAIL && process.env.COURTED_PASSWORD),
-    unblocker: unblockerProvider() || null,
-}));
+app.get('/api/status', (_req, res) => {
+    const accounts = readCourtedAccounts().length;
+    res.json({
+        courted: accounts > 0,
+        courtedAccounts: accounts,
+        unblocker: unblockerProvider() || null,
+    });
+});
 
 // Start a search. Body: { locations:[], sources:[], options... }
 app.post('/api/search', (req, res) => {
@@ -148,7 +152,7 @@ app.get('/api/search/:id/export', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`\n  Agent Search webapp → http://localhost:${PORT}\n`);
-    console.log(`  Courted creds: ${process.env.COURTED_EMAIL ? 'set ✓' : 'NOT SET ✗ (web/.env)'}`);
+    console.log(`  Courted creds: ${readCourtedAccounts().length || 'NO'} account(s)`);
     console.log(`  Unblocker:     ${unblockerProvider() || 'NONE — Zillow + realtor.com disabled'}  (Zillow + realtor.com)\n`);
 });
 

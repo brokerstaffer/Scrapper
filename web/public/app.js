@@ -41,7 +41,8 @@ fetch('/api/status')
         const env = document.getElementById('env');
         if (!env) return;
         const ok = (label, on) => `<span class="${on ? 'ok' : 'bad'}">${on ? '●' : '○'} ${label}</span>`;
-        env.innerHTML = `${ok('Courted', s.courted)} &nbsp; ${ok(`Unblocker${s.unblocker ? ' · ' + s.unblocker : ''}`, !!s.unblocker)}`;
+        const courtedLabel = s.courtedAccounts > 1 ? `Courted · ${s.courtedAccounts} accts` : 'Courted';
+        env.innerHTML = `${ok(courtedLabel, s.courted)} &nbsp; ${ok(`Unblocker${s.unblocker ? ' · ' + s.unblocker : ''}`, !!s.unblocker)}`;
     })
     .catch(() => {});
 
