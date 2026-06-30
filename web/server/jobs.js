@@ -6,6 +6,7 @@
 // still receives everything from the beginning.
 
 import { randomUUID } from 'node:crypto';
+import { persistSource } from './db.js';
 
 const jobs = new Map();
 
@@ -67,9 +68,11 @@ export function emit(job, type, data) {
     } else if (type === 'source_done') {
         const s = job.sources[data.source];
         if (s) { s.status = 'done'; s.message = data.message || ''; }
+        persistSource(data.source, job.rows[data.source]); // → Supabase (no-op if unconfigured)
     } else if (type === 'source_error') {
         const s = job.sources[data.source];
         if (s) { s.status = 'error'; s.message = data.message || ''; }
+        persistSource(data.source, job.rows[data.source]); // save whatever we got
     }
 
     const payload = `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
