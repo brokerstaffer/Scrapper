@@ -54,7 +54,8 @@ let currentJob = null;
 let pollTimer = null;
 const totals = {};   // matched-count per source
 const rowData = {};  // raw rows kept for re-render on toggle
-for (const s of SOURCES) { totals[s] = null; rowData[s] = []; }
+const serverCount = {}; // server-side fetched count (full-sweep streams to DB, not the table)
+for (const s of SOURCES) { totals[s] = null; rowData[s] = []; serverCount[s] = 0; }
 
 let running = false;
 $('searchBtn').addEventListener('click', () => (running ? stopSearch() : startSearch()));
@@ -95,7 +96,8 @@ function startSearch() {
     // Split on NEW LINES / semicolons only — NOT commas (a "City, ST" has a comma).
     const locations = $('locations').value
         .split(/[\n;]+/).map((s) => s.trim()).filter(Boolean);
-    if (!locations.length) { alert('Enter at least one location or ZIP.'); return; }
+    const courtedAllAgents = $('courtedAllAgents').checked;
+    if (!locations.length && !courtedAllAgents) { alert('Enter at least one location or ZIP (or tick Courted “All agents”).'); return; }
 
     const sources = SOURCES.filter((s) => $(`src-${s}`).checked);
     if (!sources.length) { alert('Select at least one source.'); return; }
@@ -106,6 +108,7 @@ function startSearch() {
         courtedMax: +$('courtedMax').value || 0,
         minSalesVolume: +$('minSalesVolume').value || 0,
         courtedEnrich: $('courtedEnrich').checked,
+        courtedAllAgents,
         zillowMaxPages: +$('zillowMaxPages').value || 25,
         zillowConcurrency: +$('zillowConcurrency').value || 4,
         zillowEnrich: $('zillowEnrich').checked,
@@ -152,6 +155,7 @@ function poll(jobId) {
                 const sc = d.sources[s];
                 if (!sc) continue;
                 if (sc.total != null) totals[s] = sc.total;
+                if (sc.count != null) serverCount[s] = sc.count;
                 for (const row of (sc.newRows || [])) addRow({ source: s, row });
                 if (sc.status && sc.status !== 'pending') {
                     setStatus(s, sc.status, sc.message, sc.status === 'error');
@@ -223,6 +227,7 @@ function resetUi(sources) {
     for (const src of SOURCES) {
         totals[src] = null;
         rowData[src] = [];
+        serverCount[src] = 0;
         const active = sources.includes(src);
         $(`panel-${src}`).style.opacity = active ? '1' : '0.4';
         $(`table-${src}`).querySelector('thead').innerHTML =
@@ -250,7 +255,8 @@ function addRow({ source, row }) {
 
 // Count badge shows "fetched / total" once the matched total is known.
 function updateCount(source) {
-    const n = $(`table-${source}`).querySelector('tbody').children.length;
+    const rendered = $(`table-${source}`).querySelector('tbody').children.length;
+    const n = Math.max(rendered, serverCount[source] || 0); // full-sweep: rows go to DB, not the table
     const total = totals[source];
     $(`count-${source}`).textContent = (total != null && total !== n)
         ? `${n.toLocaleString()} / ${total.toLocaleString()}`

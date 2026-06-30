@@ -6,7 +6,7 @@
 // still receives everything from the beginning.
 
 import { randomUUID } from 'node:crypto';
-import { persistSource } from './db.js';
+import { persistSource } from './ingest.js';
 
 const jobs = new Map();
 
@@ -51,14 +51,20 @@ export function abortJob(job) {
 
 /** Emit an event to a job: buffered + fanned out to all live subscribers. */
 export function emit(job, type, data) {
-    const event = { type, data, t: Date.now() };
-    job.events.push(event);
+    // Full-sweep (Courted "all agents") streams 100k+ rows straight to the DB —
+    // don't hoard them (or their per-record events) in memory.
+    const dbOnly = !!(job.params && job.params.courtedAllAgents) && data && data.source === 'courted';
+
+    if (!(type === 'record' && dbOnly)) {
+        job.events.push({ type, data, t: Date.now() });
+    }
 
     // Update server-side rollups so exports + late joins are consistent.
     if (type === 'record') {
         const src = data.source;
-        if (job.rows[src]) job.rows[src].push(data.row);
-        if (job.sources[src]) job.sources[src].count = job.rows[src].length;
+        const s = job.sources[src];
+        if (job.rows[src] && !dbOnly) job.rows[src].push(data.row);
+        if (s) s.count = (s.count || 0) + 1; // count is independent of whether we store the row
     } else if (type === 'progress') {
         const s = job.sources[data.source];
         if (s) Object.assign(s, data);
@@ -68,13 +74,15 @@ export function emit(job, type, data) {
     } else if (type === 'source_done') {
         const s = job.sources[data.source];
         if (s) { s.status = 'done'; s.message = data.message || ''; }
-        persistSource(data.source, job.rows[data.source]); // → Supabase (no-op if unconfigured)
+        // Forward to the DB app — unless the engine already streamed it itself.
+        if (!s || !s.selfIngested) persistSource(data.source, job.rows[data.source]);
     } else if (type === 'source_error') {
         const s = job.sources[data.source];
         if (s) { s.status = 'error'; s.message = data.message || ''; }
-        persistSource(data.source, job.rows[data.source]); // save whatever we got
+        if (!s || !s.selfIngested) persistSource(data.source, job.rows[data.source]); // save what we got
     }
 
+    if (!job.subscribers.size) return; // poll-based UI; skip building SSE payloads
     const payload = `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const res of job.subscribers) {
         try { res.write(payload); } catch { /* dropped client */ }

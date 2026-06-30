@@ -54,7 +54,9 @@ app.post('/api/search', (req, res) => {
     const sources = (Array.isArray(b.sources) ? b.sources : ['zillow', 'courted'])
         .filter((s) => s === 'zillow' || s === 'courted' || s === 'realtor');
 
-    if (!locations.length) return res.status(400).json({ error: 'Provide at least one location or ZIP.' });
+    const courtedAllAgents = Boolean(b.courtedAllAgents);
+    // Courted "all agents" is an unfiltered MLS sweep, so it needs no location.
+    if (!locations.length && !courtedAllAgents) return res.status(400).json({ error: 'Provide at least one location or ZIP.' });
     if (!sources.length) return res.status(400).json({ error: 'Select at least one source.' });
 
     const params = {
@@ -63,6 +65,7 @@ app.post('/api/search', (req, res) => {
         // Courted options (0 = all matches)
         courtedMax: toInt(b.courtedMax, 0),
         courtedEnrich: Boolean(b.courtedEnrich),
+        courtedAllAgents,
         minSalesVolume: toInt(b.minSalesVolume, 0),
         // Zillow options (default: all pages up to Zillow's 25-page cap)
         zillowMaxPages: toInt(b.zillowMaxPages, 25),
@@ -108,7 +111,7 @@ app.get('/api/search/:id/results', (req, res) => {
             status: src.status,
             message: src.message,
             total: src.total,
-            count: job.rows[s].length,
+            count: src.count || job.rows[s].length,
             newRows: job.rows[s].slice(off),
         };
     }
