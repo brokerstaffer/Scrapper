@@ -66,6 +66,7 @@ app.post('/api/search', (req, res) => {
         courtedMax: toInt(b.courtedMax, 0),
         courtedEnrich: Boolean(b.courtedEnrich),
         courtedAllAgents,
+        courtedReverse: Boolean(b.courtedReverse),
         minSalesVolume: toInt(b.minSalesVolume, 0),
         // Zillow options (default: all pages up to Zillow's 25-page cap)
         zillowMaxPages: toInt(b.zillowMaxPages, 25),

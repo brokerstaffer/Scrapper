@@ -47,12 +47,15 @@ function personKey(row) {
 }
 
 export async function runCourted(job) {
-    const { locations, courtedMax, courtedEnrich, minSalesVolume, courtedAllAgents } = job.params;
+    const { locations, courtedMax, courtedEnrich, minSalesVolume, courtedAllAgents, courtedReverse } = job.params;
     const source = 'courted';
     // Full unfiltered sweep: pull every agent the account's MLS can see.
     const searchLocations = courtedAllAgents ? [] : locations;
 
     const accounts = readCourtedAccounts();
+    // Optionally process accounts last-to-first (e.g. do the already-scraped
+    // account 1 last so fresh accounts' new agents reach the DB sooner).
+    if (courtedReverse) accounts.reverse();
     if (!accounts.length) {
         emit(job, 'source_error', { source, message: 'Courted credentials not set (COURTED_EMAIL / COURTED_PASSWORD in web/.env).' });
         engineFinished(job);
