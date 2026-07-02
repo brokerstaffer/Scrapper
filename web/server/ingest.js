@@ -65,7 +65,7 @@ async function postAll(source, rows) {
     return totals;
 }
 
-async function postBatch(source, rows, retries = 2) {
+async function postBatch(source, rows, retries = 5) {
     let lastErr;
     for (let attempt = 0; attempt <= retries; attempt += 1) {
         try {
@@ -88,7 +88,7 @@ async function postBatch(source, rows, retries = 2) {
             if (/^4\d\d /.test(err.message)) throw err;
             lastErr = err;
         }
-        await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+        await new Promise((r) => setTimeout(r, Math.min(20000, 2000 * (attempt + 1))));
     }
     throw lastErr;
 }

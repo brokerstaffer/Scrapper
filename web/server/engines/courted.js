@@ -85,7 +85,14 @@ export async function runCourted(job) {
             sent += r.received;
             emit(job, 'progress', { source, status: 'running', message: `Saved ${sent.toLocaleString()} to database…` });
         } catch (err) {
-            log.warning(`DB save failed (${batch.length} rows): ${err.message}`);
+            // ingestRows already retried internally; if it STILL failed, don't drop
+            // the rows — re-queue them so the next flush retries. Upserts are
+            // idempotent, so a re-send is safe. This stalls scraping (backpressure)
+            // until the DB app recovers rather than losing agents (a 502 previously
+            // silently dropped 1,000 rows).
+            buffer = batch.concat(buffer);
+            log.warning(`DB save failed (${batch.length} rows) — re-queued for retry: ${err.message}`);
+            await new Promise((r) => setTimeout(r, 5000));
         }
     };
 

@@ -71,6 +71,7 @@ export async function runScrape(config, { log = console, onRecord, onMeta, shoul
         let offset = 0;
         let perLoc = 0;
         let total = Infinity;
+        let consecutiveFailures = 0; // stuck-page guard (don't abandon the account)
 
         log.info?.(`Searching ${label} ...`);
 
@@ -99,13 +100,35 @@ export async function runScrape(config, { log = console, onRecord, onMeta, shoul
                 extraParams,
             });
 
-            let data;
-            try {
-                data = await fetchSearchPage(session, query);
-            } catch (err) {
-                log.warning?.(`Page failed (offset ${offset}) for ${label}: ${err.message}`);
-                break;
+            let data = null;
+            let pageErr = null;
+            // fetchSearchPage already retries 5xx/429 internally; add loop-level
+            // retries with longer waits for a stubborn page (deep-pagination 504s).
+            for (let pageAttempt = 1; pageAttempt <= 3; pageAttempt += 1) {
+                try {
+                    data = await fetchSearchPage(session, query);
+                    pageErr = null;
+                    break;
+                } catch (err) {
+                    pageErr = err;
+                    log.warning?.(`Page failed (offset ${offset}) for ${label}, retry ${pageAttempt}/3: ${err.message}`);
+                    await sleep(Math.min(30000, 5000 * pageAttempt));
+                }
             }
+            if (pageErr) {
+                // Give up on THIS page only — skip its window and continue, so one
+                // stuck page never abandons the whole account (was a hard `break`,
+                // which silently dropped ~110k agents on a mid-sweep 504).
+                consecutiveFailures += 1;
+                if (consecutiveFailures >= 8) {
+                    log.warning?.(`${label}: ${consecutiveFailures} consecutive page failures — stopping (API unavailable).`);
+                    break;
+                }
+                offset += limit; // advance past the bad page and keep going
+                await sleep(delayMs);
+                continue;
+            }
+            consecutiveFailures = 0;
 
             total = Number.isFinite(data.count) ? data.count : 0;
             const results = Array.isArray(data.results) ? data.results : [];
