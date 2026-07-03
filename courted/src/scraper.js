@@ -52,22 +52,43 @@ export async function runScrape(config, { log = console, onRecord, onMeta, shoul
         includeContactInfo = true,
         statuses = DEFAULT_STATUSES,
         extraParams = {},
+        segments = null,           // pre-built band segments (dodge deep-offset wall)
         delayMs = 350,             // polite pause between page requests
     } = config;
 
     const session = config.session || await login(email, password);
     log.info?.('Authenticated to Courted.');
 
-    const searches = locations.length
-        ? locations.map(parseLocation).filter(Boolean)
-        : [null]; // no locations => one unfiltered sweep
+    // Normalize the work list into uniform "segment" objects. Three sources:
+    //   1. segments (band pagination) — each carries its own volume/state filter,
+    //   2. locations — city/zip searches, one segment each,
+    //   3. neither — a single unfiltered "(all agents)" sweep.
+    // recordTag is the location string stamped onto each row; band segments aren't
+    // real locations so they leave it blank (same as an unfiltered sweep).
+    const searches = Array.isArray(segments) && segments.length
+        ? segments.map((s) => ({
+            label: s.label || '(segment)',
+            locationScope: s.locationScope || '',
+            locationValues: s.locationValues || [],
+            extraParams: { ...extraParams, ...(s.extraParams || {}) },
+            recordTag: '',
+        }))
+        : (locations.length
+            ? locations.map(parseLocation).filter(Boolean).map((loc) => ({
+                label: loc.label,
+                locationScope: loc.scope,
+                locationValues: [loc.value],
+                extraParams,
+                recordTag: loc.label,
+            }))
+            : [{ label: '(all agents)', locationScope: '', locationValues: [], extraParams, recordTag: '' }]);
 
-    const seen = new Set(); // courted_mls_id dedupe across locations
+    const seen = new Set(); // courted_mls_id dedupe across segments
     let pushed = 0;
 
-    for (const loc of searches) {
+    for (const seg of searches) {
         if (shouldStop?.()) return { pushed };
-        const label = loc ? loc.label : '(all agents)';
+        const label = seg.label;
         let offset = 0;
         let perLoc = 0;
         let total = Infinity;
@@ -93,11 +114,11 @@ export async function runScrape(config, { log = console, onRecord, onMeta, shoul
                 offset,
                 orderBy,
                 orderDirection,
-                locationScope: loc ? loc.scope : '',
-                locationValues: loc ? [loc.value] : [],
+                locationScope: seg.locationScope,
+                locationValues: seg.locationValues,
                 statuses,
                 includeContactInfo,
-                extraParams,
+                extraParams: seg.extraParams,
             });
 
             let data = null;
@@ -154,7 +175,7 @@ export async function runScrape(config, { log = console, onRecord, onMeta, shoul
                     continue;
                 }
 
-                let row = mapSearchRecord(rec, loc ? loc.label : '');
+                let row = mapSearchRecord(rec, seg.recordTag);
 
                 if (enrichProfiles && rec.courted_mls_id) {
                     try {

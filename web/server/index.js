@@ -67,6 +67,12 @@ app.post('/api/search', (req, res) => {
         courtedEnrich: Boolean(b.courtedEnrich),
         courtedAllAgents,
         courtedReverse: Boolean(b.courtedReverse),
+        // Band pagination on full sweeps (default on). Pass false to force the
+        // old flat offset sweep.
+        courtedBanded: b.courtedBanded !== false,
+        // Resume a sweep from a later account (skip N already-captured accounts,
+        // counted in run order — after any reverse).
+        courtedSkipAccounts: toInt(b.courtedSkipAccounts, 0),
         minSalesVolume: toInt(b.minSalesVolume, 0),
         // Zillow options (default: all pages up to Zillow's 25-page cap)
         zillowMaxPages: toInt(b.zillowMaxPages, 25),

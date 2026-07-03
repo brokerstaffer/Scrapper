@@ -7,12 +7,17 @@
 // (by Courted ID, else email / license / name+office).
 
 import { runScrape } from '../../../courted/src/scraper.js';
+import { login } from '../../../courted/src/auth.js';
+import { buildSegments } from '../../../courted/src/segments.js';
 import { emit, engineFinished } from '../jobs.js';
 import { ingestRows, ingestEnabled } from '../ingest.js';
 
 // Flush to the DB app every N records during a long sweep (bounds memory + means
 // a mid-run failure doesn't lose everything already scraped).
 const FLUSH_SIZE = Number(process.env.COURTED_FLUSH_SIZE) || 1000;
+// Max agents per band segment — kept under Courted's deep-pagination wall (~80–100k,
+// varies per account). Each segment pages from offset 0, so it never goes deep.
+const SEGMENT_MAX = Number(process.env.COURTED_SEGMENT_MAX) || 70000;
 
 /**
  * Read every configured Courted account from the environment:
@@ -51,11 +56,19 @@ export async function runCourted(job) {
     const source = 'courted';
     // Full unfiltered sweep: pull every agent the account's MLS can see.
     const searchLocations = courtedAllAgents ? [] : locations;
+    // Band pagination: on a full sweep, split each account by sales-volume range
+    // so no query pages past Courted's deep-offset 504 wall. Defaults on for the
+    // full sweep; set courtedBanded:false to force the old flat offset sweep.
+    const useBands = courtedAllAgents && job.params.courtedBanded !== false;
 
-    const accounts = readCourtedAccounts();
+    let accounts = readCourtedAccounts();
     // Optionally process accounts last-to-first (e.g. do the already-scraped
     // account 1 last so fresh accounts' new agents reach the DB sooner).
     if (courtedReverse) accounts.reverse();
+    // Optionally resume from a later account (skip ones already fully captured),
+    // applied AFTER the reverse so it matches the displayed 1..N run order.
+    const skip = Math.max(0, Number(job.params.courtedSkipAccounts) || 0);
+    if (skip > 0) accounts = accounts.slice(skip);
     if (!accounts.length) {
         emit(job, 'source_error', { source, message: 'Courted credentials not set (COURTED_EMAIL / COURTED_PASSWORD in web/.env).' });
         engineFinished(job);
@@ -107,10 +120,26 @@ export async function runCourted(job) {
             emit(job, 'progress', { source, status: 'running', message: accounts.length > 1 ? `Signing in — ${tag}…` : 'Signing in…' });
 
             try {
+                // Banded full sweep: log in once, plan volume/state segments (each
+                // under the deep-offset wall), then hand them to the scraper.
+                let session = null;
+                let segments = null;
+                if (useBands) {
+                    emit(job, 'progress', { source, status: 'running', message: `Planning segments — ${tag || 'account'}…` });
+                    session = await login(acc.email, acc.password);
+                    segments = await buildSegments(session, {
+                        safeMax: SEGMENT_MAX,
+                        log,
+                        delayMs: Number(process.env.COURTED_DELAY_MS) || 350,
+                    });
+                    emit(job, 'progress', { source, status: 'running', message: `${segments.length} segments planned — ${tag || 'scraping'}…` });
+                }
                 await runScrape(
                     {
                         email: acc.email,
                         password: acc.password,
+                        session,                  // reuse login from segment planning (null → scraper logs in)
+                        segments,                 // null → flat offset sweep (non-banded)
                         locations: searchLocations,
                         maxRecords: 0,            // cap is enforced across accounts below
                         maxRecordsPerLocation: 0,
