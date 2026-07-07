@@ -69,6 +69,11 @@ export async function runCourted(job) {
     // applied AFTER the reverse so it matches the displayed 1..N run order.
     const skip = Math.max(0, Number(job.params.courtedSkipAccounts) || 0);
     if (skip > 0) accounts = accounts.slice(skip);
+    // Optionally target specific accounts (email substrings) — e.g. re-run only
+    // the accounts that came out incomplete. Idempotent upserts make this safe.
+    const only = (Array.isArray(job.params.courtedOnly) ? job.params.courtedOnly : [])
+        .map((s) => String(s).trim().toLowerCase()).filter(Boolean);
+    if (only.length) accounts = accounts.filter((a) => only.some((o) => a.email.toLowerCase().includes(o)));
     if (!accounts.length) {
         emit(job, 'source_error', { source, message: 'Courted credentials not set (COURTED_EMAIL / COURTED_PASSWORD in web/.env).' });
         engineFinished(job);
@@ -125,6 +130,9 @@ export async function runCourted(job) {
                 let session = null;
                 let segments = null;
                 if (useBands) {
+                    // Cool off before probing a fresh account — planning right
+                    // after a heavy scrape is when Courted returns garbage counts.
+                    if (i > 0) await new Promise((r) => setTimeout(r, 20000));
                     emit(job, 'progress', { source, status: 'running', message: `Planning segments — ${tag || 'account'}…` });
                     session = await login(acc.email, acc.password);
                     segments = await buildSegments(session, {

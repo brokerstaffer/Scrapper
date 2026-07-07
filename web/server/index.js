@@ -73,6 +73,9 @@ app.post('/api/search', (req, res) => {
         // Resume a sweep from a later account (skip N already-captured accounts,
         // counted in run order — after any reverse).
         courtedSkipAccounts: toInt(b.courtedSkipAccounts, 0),
+        // Target specific accounts by email substring (re-run incomplete ones).
+        courtedOnly: Array.isArray(b.courtedOnly)
+            ? b.courtedOnly.map((s) => String(s).trim()).filter(Boolean) : [],
         minSalesVolume: toInt(b.minSalesVolume, 0),
         // Zillow options (default: all pages up to Zillow's 25-page cap)
         zillowMaxPages: toInt(b.zillowMaxPages, 25),
