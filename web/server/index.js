@@ -8,6 +8,8 @@ import { readFileSync, existsSync } from 'node:fs';
 
 import { createJob, getJob, emit, subscribe, unsubscribe, abortJob } from './jobs.js';
 import { runCourted, readCourtedAccounts } from './engines/courted.js';
+import { railwayEnabled, upsertVariables } from './railway.js';
+import { login as courtedLogin } from '../../courted/src/auth.js';
 import { runZillow } from './engines/zillow.js';
 import { runRealtor } from './engines/realtor.js';
 import { activeProvider as unblockerProvider } from './unblocker.js';
@@ -44,6 +46,49 @@ app.get('/api/status', (_req, res) => {
         courtedAccounts: accounts,
         unblocker: unblockerProvider() || null,
     });
+});
+
+// Register a NEW Courted account: validate the login, then save its credentials
+// into this Railway service (next free COURTED_EMAIL_n slot). Writing the vars
+// triggers a redeploy; the UI waits for the account count to rise, then starts
+// the sweep. Optionally gated by ADMIN_TOKEN (x-admin-token header).
+app.post('/api/courted/account', async (req, res) => {
+    if (process.env.ADMIN_TOKEN && req.get('x-admin-token') !== process.env.ADMIN_TOKEN) {
+        return res.status(401).json({ error: 'unauthorized' });
+    }
+    const b = req.body || {};
+    const email = String(b.email || '').trim();
+    const password = String(b.password || '');
+    if (!email || !password) return res.status(400).json({ error: 'email and password are required.' });
+
+    // Already configured? Skip the save; the caller can sweep it directly.
+    const existing = readCourtedAccounts().map((a) => a.email.toLowerCase());
+    if (existing.includes(email.toLowerCase())) {
+        return res.json({ ok: true, already: true, email, accountsExpected: existing.length });
+    }
+
+    // Validate the login BEFORE saving anything to Railway.
+    try {
+        await courtedLogin(email, password);
+    } catch (err) {
+        return res.status(400).json({ error: `Courted login failed — check the credentials. (${err.message})` });
+    }
+
+    if (!railwayEnabled()) {
+        return res.status(501).json({ error: 'Server can’t save accounts — RAILWAY_API_TOKEN is not configured.' });
+    }
+
+    const slot = nextCourtedSlot();
+    if (!slot) return res.status(400).json({ error: 'No free account slots (max 20).' });
+    const emailKey = slot === 1 ? 'COURTED_EMAIL' : `COURTED_EMAIL_${slot}`;
+    const passKey = slot === 1 ? 'COURTED_PASSWORD' : `COURTED_PASSWORD_${slot}`;
+
+    try {
+        await upsertVariables({ [emailKey]: email, [passKey]: password });
+    } catch (err) {
+        return res.status(502).json({ error: `Saving to Railway failed: ${err.message}` });
+    }
+    res.json({ ok: true, slot, email, accountsExpected: existing.length + 1 });
 });
 
 // Start a search. Body: { locations:[], sources:[], options... }
@@ -171,6 +216,13 @@ app.listen(PORT, () => {
 
 // --- helpers ---
 function toInt(v, d) { const n = parseInt(v, 10); return Number.isNaN(n) ? d : n; }
+
+// Lowest unused Courted account slot: 1 = COURTED_EMAIL, then _2 … _20. 0 = full.
+function nextCourtedSlot() {
+    if (!process.env.COURTED_EMAIL) return 1;
+    for (let i = 2; i <= 20; i += 1) if (!process.env[`COURTED_EMAIL_${i}`]) return i;
+    return 0;
+}
 
 function toCsv(rows, cols) {
     const esc = (v) => {

@@ -19,6 +19,32 @@
     </header>
 
     <main>
+        <section class="search-card add-account" id="add-account-card">
+            <div class="add-head">
+                <h2>➕ Add a Courted account</h2>
+                <p class="hint">Enter a new Courted login. It's saved to the server and its agents are swept into the database automatically — no setup needed.</p>
+            </div>
+            <div class="add-grid">
+                <label class="field small">
+                    <span>Courted email</span>
+                    <input type="email" id="acctEmail" placeholder="agent@brokerage.com" autocomplete="off" />
+                </label>
+                <label class="field small">
+                    <span>Password</span>
+                    <input type="password" id="acctPassword" placeholder="••••••••" autocomplete="new-password" />
+                </label>
+                <label class="field small">
+                    <span>Target MLS state <span class="hint">(optional)</span></span>
+                    <input type="text" id="acctState" maxlength="2" placeholder="e.g. NV — blank = whole account" />
+                </label>
+            </div>
+            <div class="add-actions">
+                <button id="addAcctBtn" class="primary">Add account &amp; start sweep</button>
+                <button id="stopAcctBtn" class="ghost danger" style="display:none">■ Stop sweep</button>
+            </div>
+            <div class="msg" id="acctMsg"></div>
+        </section>
+
         <section class="search-card">
             <label class="field">
                 <span>Locations or ZIP codes</span>

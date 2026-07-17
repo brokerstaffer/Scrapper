@@ -229,3 +229,18 @@ tbody:empty::after { content: ""; }
 #table-master tbody tr.multi td:first-child { box-shadow: inset 3px 0 0 #f4a300; }
 #table-master tbody tr.multi td { background: rgba(244, 163, 0, 0.06); }
 #table-master tbody tr.multi:hover td { background: rgba(244, 163, 0, 0.1); }
+
+/* --- Add-account card --- */
+.add-account .add-head h2 { margin: 0 0 4px; font-size: 1.05rem; }
+.add-account .add-head p { margin: 0; }
+.add-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    margin: 14px 0;
+}
+@media (max-width: 720px) { .add-grid { grid-template-columns: 1fr; } }
+.add-account .msg { margin-top: 10px; }
+.add-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.ghost.danger { border-color: #c0392b; color: #e57373; }
+.ghost.danger:hover { background: rgba(192,57,43,0.12); }

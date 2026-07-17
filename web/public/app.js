@@ -173,6 +173,8 @@ function finishRun() {
     running = false;
     $('searchBtn').textContent = 'Search';
     $('searchBtn').classList.remove('stopping');
+    $('stopAcctBtn').style.display = 'none'; // add-account sweep finished
+    $('addAcctBtn').disabled = false;
     // Enable the master-list builder once a job has produced rows.
     const anyRows = SOURCES.some((s) => rowData[s].length);
     $('buildMaster').disabled = !(currentJob && anyRows);
@@ -287,3 +289,98 @@ function enableExport(source) {
 
 function escapeHtml(s) { return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
 function escapeAttr(s) { return String(s == null ? '' : s).replace(/"/g, '&quot;'); }
+
+// --- Add a new Courted account, save it to Railway, then auto-sweep it ---
+$('addAcctBtn').addEventListener('click', addAccount);
+$('stopAcctBtn').addEventListener('click', () => {
+    stopSearch();
+    $('stopAcctBtn').style.display = 'none';
+    $('addAcctBtn').disabled = false;
+    setAcctMsg('Sweep stopped. Everything scraped so far is saved — you can re-add to resume.');
+});
+
+function setAcctMsg(text, isError) {
+    const m = $('acctMsg');
+    m.textContent = text;
+    m.classList.toggle('error', !!isError);
+}
+
+async function addAccount() {
+    const email = $('acctEmail').value.trim();
+    const password = $('acctPassword').value;
+    const state = $('acctState').value.trim().toUpperCase();
+    if (!email || !password) { setAcctMsg('Enter the Courted email and password.', true); return; }
+    if (state && !/^[A-Z]{2}$/.test(state)) { setAcctMsg('MLS state must be a 2-letter code (e.g. NV) — or leave it blank.', true); return; }
+
+    $('addAcctBtn').disabled = true;
+    setAcctMsg('Validating login & saving the account…');
+    try {
+        const r = await fetch('/api/courted/account', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+        });
+        const d = await r.json();
+        if (!r.ok || d.error) throw new Error(d.error || 'request failed');
+
+        if (d.already) {
+            setAcctMsg('Account already saved — starting the sweep…');
+        } else {
+            setAcctMsg(`Saved (account #${d.slot}). Restarting the service to load it — ~1–2 min…`);
+            await waitForAccounts(d.accountsExpected);
+            setAcctMsg('Service is back up. Starting the sweep…');
+        }
+        startAccountSweep(email, state);
+    } catch (err) {
+        setAcctMsg('Failed: ' + err.message, true);
+        $('addAcctBtn').disabled = false;
+    }
+}
+
+// Poll /api/status until the new account is loaded (survives the redeploy gap).
+function waitForAccounts(expected) {
+    return new Promise((resolve) => {
+        const tick = () => fetch('/api/status', { cache: 'no-store' })
+            .then((r) => r.json())
+            .then((s) => {
+                if ((s.courtedAccounts || 0) >= expected) resolve();
+                else setTimeout(tick, 5000);
+            })
+            .catch(() => setTimeout(tick, 5000)); // container down mid-redeploy → retry
+        setTimeout(tick, 10000); // let the redeploy start before first poll
+    });
+}
+
+function startAccountSweep(email, state) {
+    const body = state
+        ? { sources: ['courted'], courtedOnly: [email], courtedAllAgents: false, locations: [`state:${state}`] }
+        : { sources: ['courted'], courtedOnly: [email], courtedAllAgents: true, courtedBanded: true };
+
+    resetUi(['courted']);
+    running = true;
+    $('searchBtn').textContent = 'Stop';
+    $('searchBtn').classList.add('stopping');
+
+    fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    })
+        .then((r) => r.json())
+        .then((res) => {
+            if (res.error) throw new Error(res.error);
+            currentJob = res.jobId;
+            $('addAcctBtn').disabled = false;
+            $('stopAcctBtn').style.display = '';
+            $('acctPassword').value = '';
+            setAcctMsg(`Sweep started ✓ for ${email}${state ? ' · ' + state : ''} — live progress in the Courted panel below.`);
+            openStream(res.jobId);
+        })
+        .catch((err) => {
+            setAcctMsg('Sweep failed to start: ' + err.message, true);
+            $('addAcctBtn').disabled = false;
+            running = false;
+            $('searchBtn').textContent = 'Search';
+            $('searchBtn').classList.remove('stopping');
+        });
+}

@@ -12,6 +12,7 @@ const PAGE_SIZE = 50; // API accepts larger pages than the UI's 20
 
 /**
  * Turn a user location string into { scope, value, label }.
+ *   "state:NV"   -> { scope: 'state', value: 'NV', label: 'NV' }  (whole-state / MLS)
  *   "Miami, FL"  -> { scope: 'city', value: 'Miami|FL', label: 'Miami, FL' }
  *   "33139"      -> { scope: 'zip',  value: '33139',    label: '33139' }
  *   ""/null      -> null  (means "no location filter — all agents")
@@ -19,6 +20,10 @@ const PAGE_SIZE = 50; // API accepts larger pages than the UI's 20
 export function parseLocation(raw) {
     const full = String(raw || '').trim();
     if (!full) return null;
+    // Explicit whole-state filter — handy for targeting one MLS by its state
+    // (e.g. Greater Las Vegas AoR == Nevada). Verified: Courted wants the code.
+    const st = full.match(/^state:\s*([A-Za-z]{2})$/i);
+    if (st) return { scope: 'state', value: st[1].toUpperCase(), label: st[1].toUpperCase() };
     if (/^\d{5}(-\d{4})?$/.test(full)) {
         return { scope: 'zip', value: full.slice(0, 5), label: full };
     }
