@@ -45,6 +45,42 @@
             <div class="msg" id="acctMsg"></div>
         </section>
 
+        <section class="search-card import-card" id="import-card">
+            <div class="add-head">
+                <h2>📥 Import Profile URLs <span class="hint">enrichment</span></h2>
+                <p class="hint">Paste a shared Google Sheet link (<b>Anyone with the link</b>) or a CSV of Zillow / Realtor.com profile URLs. Each agent is scraped, cross-checked against the database by identity, and only new agents or empty fields are written — the exact URLs already scraped are skipped.</p>
+            </div>
+            <div class="import-grid">
+                <label class="field">
+                    <span>Google Sheet link <span class="hint">(shared: Anyone with the link)</span></span>
+                    <input type="text" id="importSheet" placeholder="https://docs.google.com/spreadsheets/d/…/edit#gid=0" autocomplete="off" />
+                </label>
+                <div class="import-or">or</div>
+                <label class="field">
+                    <span>Upload / paste CSV of URLs</span>
+                    <textarea id="importCsv" rows="3" placeholder="Pick a .csv file below, or paste rows / URLs here&#10;https://www.zillow.com/profile/…&#10;https://www.realtor.com/realestateagents/…"></textarea>
+                    <input type="file" id="importFile" accept=".csv,text/csv,text/plain" />
+                </label>
+            </div>
+            <div class="import-controls">
+                <label class="field small">
+                    <span>Concurrency <span class="hint">(4 safe)</span></span>
+                    <input type="number" id="importConcurrency" value="4" min="1" max="8" />
+                </label>
+                <label class="chk small"><input type="checkbox" id="importSchedule" /> Run on a schedule <span class="hint">(auto re-check — needs DB)</span></label>
+            </div>
+            <div class="add-actions">
+                <button id="importResolveBtn" class="ghost">Detect URLs</button>
+                <button id="importStartBtn" class="primary" disabled>Start enrichment</button>
+                <button id="importStopBtn" class="ghost danger" style="display:none">■ Stop</button>
+            </div>
+            <div class="import-progress" id="importProgress" style="display:none">
+                <div class="import-bar"><div class="import-bar-fill" id="importBarFill"></div></div>
+                <div class="import-stats" id="importStats"></div>
+            </div>
+            <div class="msg" id="importMsg"></div>
+        </section>
+
         <section class="search-card">
             <label class="field">
                 <span>Locations or ZIP codes</span>
@@ -143,6 +179,17 @@
                 <div class="msg" id="msg-realtor"></div>
                 <div class="table-wrap"><table id="table-realtor"><thead></thead><tbody></tbody></table></div>
             </div>
+        </section>
+
+        <section class="panel" id="panel-import" style="display:none">
+            <div class="panel-head">
+                <h2>Imported agents <span class="pill" id="status-import">idle</span></h2>
+                <div class="panel-actions">
+                    <span class="count" id="count-import">0</span>
+                </div>
+            </div>
+            <div class="msg" id="msg-import"></div>
+            <div class="table-wrap"><table id="table-import"><thead></thead><tbody></tbody></table></div>
         </section>
 
         <section class="panel master" id="panel-master">

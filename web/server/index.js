@@ -12,6 +12,8 @@ import { railwayEnabled, upsertVariables } from './railway.js';
 import { login as courtedLogin } from '../../courted/src/auth.js';
 import { runZillow } from './engines/zillow.js';
 import { runRealtor } from './engines/realtor.js';
+import { startEnrich, getEnrich, stopEnrich } from './engines/enrich.js';
+import { resolveInput } from './sheet-source.js';
 import { activeProvider as unblockerProvider } from './unblocker.js';
 import { OUTPUT_COLUMNS as COURTED_COLS } from '../../courted/src/constants.js';
 import { OUTPUT_COLUMNS as ZILLOW_COLS } from '../../src/constants.js';
@@ -89,6 +91,74 @@ app.post('/api/courted/account', async (req, res) => {
         return res.status(502).json({ error: `Saving to Railway failed: ${err.message}` });
     }
     res.json({ ok: true, slot, email, accountsExpected: existing.length + 1 });
+});
+
+// --- F1: Import Profile URLs (enrichment) -----------------------------------
+// Accepts a shared Google Sheet link, pasted CSV, or a raw urls[] list; reads the
+// dataset rows (URL + identifiers), cross-checks each against the `agents` table
+// BEFORE scraping (skip if present), scrapes only the not-present ones, and
+// forwards genuinely-new agents to the existing ingest webhook. Additive only —
+// existing rows are never modified. Matching lives in reconcile.js.
+
+const enrichCost = (n) => +(n * 0.0015).toFixed(3); // Bright Data ~$1.50 / 1k
+
+// Preview: resolve the input to counts (+ rough cost) WITHOUT scraping anything.
+app.post('/api/enrich/resolve', async (req, res) => {
+    const b = req.body || {};
+    try {
+        const r = await resolveInput({ sheetUrl: b.sheetUrl, csv: b.csv, urls: b.urls });
+        res.json({ total: r.total, zillow: r.zillow, realtor: r.realtor, withIdentity: r.withIdentity, estCostUsd: enrichCost(r.total) });
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+});
+
+// Start an enrichment run.
+app.post('/api/enrich', async (req, res) => {
+    const b = req.body || {};
+    if (!unblockerProvider()) {
+        return res.status(501).json({ error: 'No unblocker configured (set BRIGHTDATA_API_TOKEN).' });
+    }
+    let resolved;
+    try {
+        resolved = await resolveInput({ sheetUrl: b.sheetUrl, csv: b.csv, urls: b.urls });
+    } catch (err) {
+        return res.status(400).json({ error: err.message });
+    }
+    if (!resolved.total) return res.status(400).json({ error: 'No Zillow or Realtor profile URLs found in the input.' });
+
+    const job = startEnrich(resolved.list, {
+        concurrency: toInt(b.concurrency, 4),
+        detected: { zillow: resolved.zillow, realtor: resolved.realtor },
+    });
+    res.json({ enrichId: job.id, total: job.total, detected: job.detected, withIdentity: resolved.withIdentity, writeMode: job.writeMode, estCostUsd: enrichCost(job.total) });
+});
+
+// Poll an enrichment job's progress + incremental parsed rows (offset = rows the
+// client already has).
+app.get('/api/enrich/:id', (req, res) => {
+    const job = getEnrich(req.params.id);
+    if (!job) return res.status(404).json({ error: 'enrich job not found' });
+    const off = Math.max(0, parseInt(req.query.offset, 10) || 0);
+    res.json({
+        status: job.status,
+        message: job.message,
+        total: job.total,
+        done: job.done,
+        detected: job.detected,
+        counts: job.counts,
+        writeMode: job.writeMode,
+        ingested: job.ingested,
+        tagged: job.tagged,
+        estCostUsd: enrichCost(job.total),
+        newRows: job.rows.slice(off),
+    });
+});
+
+// Stop a running enrichment job.
+app.post('/api/enrich/:id/stop', (req, res) => {
+    if (!stopEnrich(req.params.id)) return res.status(404).json({ error: 'enrich job not found or already finished' });
+    res.json({ ok: true });
 });
 
 // Start a search. Body: { locations:[], sources:[], options... }

@@ -384,3 +384,168 @@ function startAccountSweep(email, state) {
             $('searchBtn').classList.remove('stopping');
         });
 }
+
+// --- F1: Import Profile URLs (enrichment) -----------------------------------
+// Self-contained flow: resolve a G-Sheet/CSV to profile URLs, scrape + enrich
+// each via /api/enrich, and stream progress. Independent of the search job.
+const IMPORT_COLS = ['Status', 'Source', 'Name', 'Phone', 'Email', 'License', 'Profile URL'];
+let importJob = null;
+let importPollTimer = null;
+let importRunning = false;
+let importRendered = 0;
+
+$('importFile').addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { $('importCsv').value = reader.result || ''; setImportMsg(`Loaded ${file.name} — click Detect URLs.`); };
+    reader.onerror = () => setImportMsg('Could not read that file.', true);
+    reader.readAsText(file);
+});
+$('importResolveBtn').addEventListener('click', resolveImport);
+$('importStartBtn').addEventListener('click', () => { if (!importRunning) startImport(); });
+$('importStopBtn').addEventListener('click', stopImport);
+
+function setImportMsg(text, isError) {
+    const m = $('importMsg');
+    m.textContent = text || '';
+    m.classList.toggle('error', !!isError);
+}
+function importBody() {
+    return { sheetUrl: $('importSheet').value.trim(), csv: $('importCsv').value };
+}
+
+function resolveImport() {
+    const body = importBody();
+    if (!body.sheetUrl && !body.csv.trim()) { setImportMsg('Paste a Google Sheet link or a CSV of profile URLs first.', true); return; }
+    $('importResolveBtn').disabled = true;
+    setImportMsg('Detecting profile URLs…');
+    fetch('/api/enrich/resolve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then((r) => r.json())
+        .then((d) => {
+            $('importResolveBtn').disabled = false;
+            if (d.error) throw new Error(d.error);
+            if (!d.total) { setImportMsg('No Zillow or Realtor profile URLs found in that input.', true); $('importStartBtn').disabled = true; return; }
+            $('importStartBtn').disabled = false;
+            setImportMsg(`Found ${d.total.toLocaleString()} profile URLs — ${d.zillow.toLocaleString()} Zillow · ${d.realtor.toLocaleString()} Realtor · est. cost ~$${d.estCostUsd}. Click Start enrichment.`);
+        })
+        .catch((err) => { $('importResolveBtn').disabled = false; setImportMsg('Detect failed: ' + err.message, true); });
+}
+
+function startImport() {
+    const body = importBody();
+    body.concurrency = +$('importConcurrency').value || 4;
+    if (!body.sheetUrl && !body.csv.trim()) { setImportMsg('Paste a Google Sheet link or a CSV of profile URLs first.', true); return; }
+
+    resetImportUi();
+    importRunning = true;
+    $('importStartBtn').disabled = true;
+    $('importResolveBtn').disabled = true;
+    $('importStopBtn').style.display = '';
+    setStatus('import', 'running', null);
+
+    fetch('/api/enrich', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then((r) => r.json())
+        .then((d) => {
+            if (d.error) throw new Error(d.error);
+            importJob = d.enrichId;
+            const sched = $('importSchedule').checked
+                ? ' Scheduled auto-runs will activate once the database connection is wired.' : '';
+            setImportMsg(`Enriching ${d.total.toLocaleString()} profiles (${d.detected.zillow} Zillow · ${d.detected.realtor} Realtor) — est ~$${d.estCostUsd}.${sched}`);
+            pollImport();
+        })
+        .catch((err) => { setImportMsg('Start failed: ' + err.message, true); finishImport('error'); });
+}
+
+function pollImport() {
+    fetch(`/api/enrich/${importJob}?offset=${importRendered}`)
+        .then((r) => r.json())
+        .then((d) => {
+            if (d.error) { finishImport('error'); return; }
+            for (const row of (d.newRows || [])) addImportRow(row);
+            importRendered += (d.newRows || []).length;
+            updateImportProgress(d);
+            if (d.status !== 'running') { finishImport(d.status); return; }
+            if (importRunning) importPollTimer = setTimeout(pollImport, 1500);
+        })
+        .catch(() => { if (importRunning) importPollTimer = setTimeout(pollImport, 2500); });
+}
+
+function updateImportProgress(d) {
+    $('importProgress').style.display = '';
+    const done = d.done || 0;
+    const total = d.total || 0;
+    const c = d.counts || {};
+    $('importBarFill').style.width = (total ? Math.round((done / total) * 100) : 0) + '%';
+    $('importStats').innerHTML =
+        `<b>${done.toLocaleString()}</b> / ${total.toLocaleString()} processed &nbsp;·&nbsp; `
+        + `<span class="tag">✓ scraped: <b>${(c.alive || 0).toLocaleString()}</b></span>`
+        + (c.new ? `<span class="tag new">new: <b>${c.new.toLocaleString()}</b></span>` : '')
+        + (c.enriched ? `<span class="tag enriched">enriched: <b>${c.enriched.toLocaleString()}</b></span>` : '')
+        + (c.skipped ? `<span class="tag">skipped: <b>${c.skipped.toLocaleString()}</b></span>` : '')
+        + `<span class="tag dead">dead: <b>${(c.dead || 0).toLocaleString()}</b></span>`
+        + `<span class="tag error">blocked/err: <b>${((c.blocked || 0) + (c.error || 0)).toLocaleString()}</b></span>`
+        + `&nbsp;·&nbsp; ~$${d.estCostUsd}`;
+    if (importRunning) setStatus('import', 'running', null);
+    $('count-import').textContent = done.toLocaleString();
+}
+
+function importFields(r) {
+    const row = r.row || {};
+    const url = r.source === 'zillow' ? row['Zillow Profile URL'] : row['Realtor Profile URL'];
+    return {
+        Status: r.status,
+        Source: r.source || '',
+        Name: row['Name'] || '',
+        Phone: row['Phone'] || row['Mobile Phone'] || '',
+        Email: row['Email'] || '',
+        License: row['License Number'] || '',
+        'Profile URL': url || r.url || '',
+    };
+}
+
+function addImportRow(r) {
+    $('panel-import').style.display = '';
+    const f = importFields(r);
+    const tbody = $('table-import').querySelector('tbody');
+    const tr = document.createElement('tr');
+    tr.className = 'new';
+    tr.innerHTML = IMPORT_COLS.map((col) => {
+        if (col === 'Status') return `<td class="st st-${escapeAttr(f.Status)}">${escapeHtml(String(f.Status))}</td>`;
+        if (col === 'Profile URL') return f['Profile URL'] ? `<td><a href="${escapeAttr(f['Profile URL'])}" target="_blank">link</a></td>` : '<td></td>';
+        const v = f[col] == null ? '' : String(f[col]);
+        return `<td title="${escapeAttr(v)}">${escapeHtml(v)}</td>`;
+    }).join('');
+    tbody.appendChild(tr);
+    setTimeout(() => tr.classList.remove('new'), 1000);
+}
+
+function resetImportUi() {
+    importRendered = 0;
+    $('panel-import').style.display = '';
+    $('table-import').querySelector('thead').innerHTML =
+        '<tr>' + IMPORT_COLS.map((c) => `<th>${c}</th>`).join('') + '</tr>';
+    $('table-import').querySelector('tbody').innerHTML = '';
+    $('count-import').textContent = '0';
+    $('msg-import').textContent = '';
+    $('importBarFill').style.width = '0%';
+    $('importStats').innerHTML = '';
+    $('importProgress').style.display = '';
+}
+
+function stopImport() {
+    if (importJob) fetch(`/api/enrich/${importJob}/stop`, { method: 'POST' }).catch(() => {});
+    setImportMsg('Stopping…');
+}
+
+function finishImport(status) {
+    importRunning = false;
+    if (importPollTimer) clearTimeout(importPollTimer);
+    $('importStopBtn').style.display = 'none';
+    $('importStartBtn').disabled = false;
+    $('importResolveBtn').disabled = false;
+    setStatus('import', status === 'error' ? 'error' : 'done', null);
+    if (status === 'error') setImportMsg('Enrichment stopped with an error — partial results are shown above.', true);
+    else if (status === 'stopped') setImportMsg('Stopped. Everything processed so far is shown above.');
+    else setImportMsg('Enrichment complete. ' + $('importStats').textContent.replace(/\s+/g, ' ').trim());
+}

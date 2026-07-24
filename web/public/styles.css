@@ -244,3 +244,35 @@ tbody:empty::after { content: ""; }
 .add-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .ghost.danger { border-color: #c0392b; color: #e57373; }
 .ghost.danger:hover { background: rgba(192,57,43,0.12); }
+
+/* --- Import Profile URLs (F1 enrichment) card --- */
+.import-card .add-head h2 { margin: 0 0 4px; font-size: 1.05rem; }
+.import-card .add-head p { margin: 0; }
+.import-grid {
+    display: grid; grid-template-columns: 1fr auto 1fr; gap: 14px; align-items: start;
+    margin: 14px 0;
+}
+@media (max-width: 720px) { .import-grid { grid-template-columns: 1fr; } }
+.import-or { align-self: center; color: var(--faint); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+@media (max-width: 720px) { .import-or { justify-self: center; } }
+.import-grid input[type="text"] {
+    background: var(--bg-1); border: 1px solid var(--line-strong); color: var(--text);
+    border-radius: 11px; padding: 12px 14px; font-size: 14px; font-family: inherit;
+    transition: border-color .15s, box-shadow .15s;
+}
+.import-grid input[type="file"] { font-size: 12px; color: var(--muted); margin-top: 8px; }
+.import-controls { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; }
+.import-controls .field.small { max-width: 150px; }
+.import-progress { margin-top: 14px; display: grid; gap: 8px; }
+.import-bar { height: 8px; border-radius: 999px; background: var(--bg-1); border: 1px solid var(--line); overflow: hidden; }
+.import-bar-fill { height: 100%; width: 0%; background: var(--grad); transition: width .3s ease; }
+.import-stats { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.import-stats b { color: var(--text); }
+.import-stats .tag { display: inline-block; margin-right: 12px; }
+.import-stats .tag.new { color: var(--green); } .import-stats .tag.enriched { color: var(--accent-2); }
+.import-stats .tag.dead, .import-stats .tag.error { color: var(--red); }
+#panel-import .panel-head::before { background: linear-gradient(180deg, #7c5cff, #5b8cff); }
+td.st { font-weight: 650; text-transform: capitalize; }
+td.st-new { color: var(--green); } td.st-enriched { color: var(--accent-2); }
+td.st-parsed { color: var(--muted); } td.st-skipped { color: var(--faint); }
+td.st-dead, td.st-error, td.st-blocked { color: var(--red); }
