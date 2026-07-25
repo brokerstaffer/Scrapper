@@ -11,6 +11,8 @@ import { login } from '../../../courted/src/auth.js';
 import { buildSegments } from '../../../courted/src/segments.js';
 import { emit, engineFinished } from '../jobs.js';
 import { ingestRows, ingestEnabled } from '../ingest.js';
+import { dbEnabled, stampCourtedTitles } from '../reconcile.js';
+import { collectRoleTitleMap } from '../../../courted/src/roles.js';
 
 // Flush to the DB app every N records during a long sweep (bounds memory + means
 // a mid-run failure doesn't lose everything already scraped).
@@ -87,6 +89,7 @@ export async function runCourted(job) {
     };
 
     const seen = new Set();   // cross-account de-dupe
+    const allCourtedIds = new Set(); // every courted_mls_id this run touched (for the title stamp)
     let pushed = 0;           // unique agents emitted
     let total = 0;            // sum of matched counts (rough, may double-count overlaps)
     const cap = courtedMax || 0;
@@ -96,6 +99,12 @@ export async function runCourted(job) {
     // Incremental DB-app flush. Buffer records and ship them every FLUSH_SIZE so
     // huge sweeps don't sit in memory and a mid-run crash keeps what was sent.
     const sendToDb = ingestEnabled();
+    // After each account's sweep, stamp the real role title (Team Leader /
+    // Managing Broker / both) on the agents it exposes — Courted's ingest can't
+    // derive the role, so without this a plain sweep leaves everyone
+    // "Salesperson". Needs the Supabase creds (dbEnabled); set
+    // courtedStampTitles:false to skip. See courted/src/roles.js.
+    const stampTitles = dbEnabled() && job.params.courtedStampTitles !== false;
     let buffer = [];
     let sent = 0;
     const flush = async () => {
@@ -162,6 +171,8 @@ export async function runCourted(job) {
                         shouldStop: () => job.aborted || reachedCap(),
                         onRecord: async (row) => {
                             if (reachedCap()) return;
+                            const cid = String(row['Courted Agent ID'] || '').trim();
+                            if (cid) allCourtedIds.add(cid); // record before dedupe so cross-account ids are all captured
                             const key = personKey(row);
                             if (key && seen.has(key)) return; // already seen on another account
                             if (key) seen.add(key);
@@ -178,6 +189,24 @@ export async function runCourted(job) {
                         },
                     },
                 );
+
+                // Post-sweep role tagging: page this account's team-leader /
+                // managing-broker filters (gentle, serial) and PATCH the correct
+                // `title` on the agents we just touched. Best-effort — a tagging
+                // hiccup never fails the sweep. Only ids seen this run are written.
+                if (stampTitles) {
+                    try {
+                        emit(job, 'progress', { source, status: 'running', message: `Tagging roles (Team Leader / Managing Broker) — ${tag || 'account'}…` });
+                        const roleSession = await login(acc.email, acc.password);
+                        const roleMap = await collectRoleTitleMap(roleSession, { delayMs: Number(process.env.COURTED_DELAY_MS) || 500, log });
+                        const scoped = new Map();
+                        for (const [id, title] of roleMap) if (allCourtedIds.has(id)) scoped.set(id, title);
+                        const n = await stampCourtedTitles(scoped);
+                        if (n) log.info(`Tagged ${n.toLocaleString()} role titles — ${tag || 'account'}.`);
+                    } catch (e) {
+                        log.warning(`Role-title tagging skipped (${tag || acc.email}): ${e.message}`);
+                    }
+                }
             } catch (err) {
                 // One bad account shouldn't kill the whole source — log and move on.
                 errors.push(`${acc.email}: ${err.message}`);

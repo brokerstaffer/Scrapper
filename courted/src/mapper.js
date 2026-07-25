@@ -97,8 +97,20 @@ export function mapSearchRecord(r, searchedLocation = '') {
     a['Is Watching'] = yesno(r.is_watching);
     a['Is Liked'] = r.is_liked ? 'Yes' : (r.is_liked === 0 ? 'No' : '');
 
+    a['Title'] = 'Salesperson';    // default; mergeDetail() upgrades it when the role is known
     a['Searched Location'] = searchedLocation;
     return a;
+}
+
+// Role title from the boolean flags, contains-searchable (both → comma-joined).
+// Someone with neither role is a plain Salesperson. Mirrors the engine's
+// post-sweep title stamp (web/server/engines/courted.js) so enrichment and the
+// filter pass agree.
+function roleTitle(a) {
+    const parts = [];
+    if (a['Is Managing Broker'] === 'Yes') parts.push('Managing Broker');
+    if (a['Is Team Leader'] === 'Yes') parts.push('Team Leader');
+    return parts.length ? parts.join(', ') : 'Salesperson';
 }
 
 /** Merge the richer detail record on top of an existing row (fills extras). */
@@ -117,6 +129,7 @@ export function mergeDetail(a, d) {
     a['Is Managing Broker'] = yesno(d.at_manager_managing_broker) || a['Is Managing Broker'];
     a['Is Rental Agent'] = yesno(d.at_rental_agent) || a['Is Rental Agent'];
     if (!a['Profile Photo URL']) a['Profile Photo URL'] = str(d.agent_photo);
+    a['Title'] = roleTitle(a); // now that role flags are known, set the real title
     return a;
 }
 

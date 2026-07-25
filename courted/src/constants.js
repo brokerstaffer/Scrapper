@@ -31,6 +31,7 @@ export const OUTPUT_COLUMNS = [
     'First Name',
     'Last Name',
     'Nickname',
+    'Title',                       // role: Salesperson | Team Leader | Managing Broker | "Managing Broker, Team Leader"
     'Email',
     'Phone',
     'Mobile Phone',

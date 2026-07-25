@@ -206,6 +206,41 @@ export async function isAlreadyPresent(row) {
  * @param {object[]} rows native scraped rows already sent to the ingest webhook
  * @returns {Promise<number>}
  */
+/**
+ * Stamp the Courted role title (Team Leader / Managing Broker / both) onto
+ * matching agents, keyed by Courted's courted_mls_id == stored
+ * source_ids.courted.agent_id. Purely ADDITIVE and title-ONLY:
+ *   • never touches any other column
+ *   • idempotent — re-running sets the same value
+ *   • agents absent from the map are left as-is (they keep "Salesperson")
+ * This is how a plain (enrichment-off) Courted sweep keeps `title` correct
+ * going forward — the app's ingest can't derive the role, so we write it here.
+ * Best-effort: a per-chunk failure is swallowed so a title miss never fails or
+ * duplicates a sweep. Returns how many ids were stamped.
+ * @param {Map<string,string>|Iterable<[string,string]>} titleById
+ * @returns {Promise<number>}
+ */
+export async function stampCourtedTitles(titleById) {
+    if (!dbEnabled() || !titleById) return 0;
+    // Group ids by title so each PATCH sets a single value.
+    const byTitle = new Map();
+    for (const [id, title] of titleById) {
+        if (!id || !title) continue;
+        if (!byTitle.has(title)) byTitle.set(title, []);
+        byTitle.get(title).push(String(id));
+    }
+    let stamped = 0;
+    for (const [title, ids] of byTitle) {
+        for (const grp of chunk(ids, 100)) {
+            try {
+                await sbPatch(`agents?source_ids->courted->>agent_id=in.(${grp.map(enc).join(',')})`, { title });
+                stamped += grp.length;
+            } catch { /* best-effort — a title miss never fails the sweep */ }
+        }
+    }
+    return stamped;
+}
+
 export async function tagSourceUrls(rows) {
     if (!dbEnabled() || !Array.isArray(rows) || !rows.length) return 0;
     let tagged = 0;
