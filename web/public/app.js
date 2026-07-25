@@ -388,7 +388,7 @@ function startAccountSweep(email, state) {
 // --- F1: Import Profile URLs (enrichment) -----------------------------------
 // Self-contained flow: resolve a G-Sheet/CSV to profile URLs, scrape + enrich
 // each via /api/enrich, and stream progress. Independent of the search job.
-const IMPORT_COLS = ['Status', 'Source', 'Name', 'Phone', 'Email', 'License', 'Profile URL'];
+const IMPORT_COLS = ['Status', 'Source', 'Name', 'Phone', 'Email', 'License', 'Profile URL', 'Note'];
 let importJob = null;
 let importPollTimer = null;
 let importRunning = false;
@@ -490,6 +490,16 @@ function updateImportProgress(d) {
     $('count-import').textContent = done.toLocaleString();
 }
 
+// Human-readable reason for the rows that weren't written as new — so a blocked
+// or errored URL explains itself in the table instead of only bumping a counter.
+function importNote(r) {
+    if (r.status === 'error') return r.message || 'scrape error';
+    if (r.status === 'blocked') return 'blocked — page too small (likely CAPTCHA / anti-bot); retry later';
+    if (r.status === 'dead') return 'no agent found on the page';
+    if (r.status === 'skipped') return 'already in the database';
+    return r.message || '';
+}
+
 function importFields(r) {
     const row = r.row || {};
     const url = r.source === 'zillow' ? row['Zillow Profile URL'] : row['Realtor Profile URL'];
@@ -501,6 +511,7 @@ function importFields(r) {
         Email: row['Email'] || '',
         License: row['License Number'] || '',
         'Profile URL': url || r.url || '',
+        Note: importNote(r),
     };
 }
 

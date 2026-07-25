@@ -62,6 +62,18 @@ export function validEmail(e) {
     return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(e || '').trim());
 }
 
+// A license is a usable identifier only if it's a plausible number/alnum code
+// (>=4 chars, not all zeros) — guards against blanks and junk like "0"/"N/A".
+// Returned value is matched EXACTLY against license_number, which is the DB
+// app's own dedup key ('lic:<number>'), so an exact hit means "already merged
+// there". Returns '' when there's nothing safe to match on.
+export function licenseKey(v) {
+    const s = String(v || '').trim();
+    if (!/^[A-Za-z0-9][A-Za-z0-9-]{3,}$/.test(s)) return '';
+    if (/^0+$/.test(s)) return '';
+    return s;
+}
+
 // ── Supabase PostgREST read helper ─────────────────────────────────────────────
 const CHUNK = 80;
 const enc = encodeURIComponent;
@@ -93,6 +105,25 @@ async function sbPatch(path, body) {
         body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`Supabase PATCH ${res.status}: ${(await res.text()).slice(0, 160)}`);
+}
+
+// Build phone-based match clauses for a scraped row. Uses BOTH the primary and
+// mobile numbers and matches two ways: preferred_phone in E.164 (how the 773k
+// existing rows store it) AND the app's own dedup key `phone:<10 digits>`, which
+// is format-independent. The match_key form is what recognizes a license-less
+// Realtor agent we already imported — Realtor gives no email/license and stores
+// the phone in DISPLAY format `(334) 559-8450`, so an E.164-only check misses it.
+function phoneKeys(row) {
+    const clauses = [];
+    const seen = new Set();
+    for (const raw of [row.Phone, row['Mobile Phone']]) {
+        const d = normPhone(raw);
+        if (!validPhone10(d) || seen.has(d)) continue;
+        seen.add(d);
+        clauses.push(`preferred_phone.eq.${enc(`+1${d}`)}`);
+        clauses.push(`match_key.eq.${enc(`phone:${d}`)}`);
+    }
+    return clauses;
 }
 
 /**
@@ -169,19 +200,22 @@ export async function reconcile(items) {
  * Re-check those against `agents` so an existing agent is still skipped rather
  * than sent to the webhook (which would merge into — i.e. modify — a live row).
  * Read-only; returns false on any hiccup so a genuinely-new agent is never
- * wrongly dropped. License is intentionally NOT used here (Zillow/Realtor license
- * formats differ from the DB's, so a fuzzy hit could falsely skip a real agent).
+ * wrongly dropped. License IS used here as a strong key: the DB app dedups on
+ * `lic:<number>`, so an exact license hit means re-sending this agent would MERGE
+ * into that existing row — skipping is both correct AND protects the existing row.
+ * (Realtor rows carry a license but usually no email, and their phone is stored
+ * in display format, so email/phone alone would miss a re-import.)
  * @param {object} row a scraped native Zillow/Realtor row
  * @returns {Promise<boolean>} true if this agent already exists in the DB
  */
 export async function isAlreadyPresent(row) {
     if (!dbEnabled() || !row) return false;
     const email = validEmail(row.Email) ? normEmail(row.Email) : '';
-    const p10 = normPhone(row['Mobile Phone'] || row.Phone);
-    const phoneE164 = validPhone10(p10) ? `+1${p10}` : '';
+    const lic = licenseKey(row['License Number']);
     const ors = [];
     if (email) ors.push(`preferred_email.eq.${enc(email)}`, `enriched_email.eq.${enc(email)}`);
-    if (phoneE164) ors.push(`preferred_phone.eq.${enc(phoneE164)}`);
+    if (lic) ors.push(`license_number.eq.${enc(lic)}`);
+    ors.push(...phoneKeys(row));
     if (!ors.length) return false;
     try {
         const rows = await sbGet(`agents?or=(${ors.join(',')})&select=id&limit=1`);
@@ -248,11 +282,11 @@ export async function tagSourceUrls(rows) {
         const url = String(row['Zillow Profile URL'] || row['Realtor Profile URL'] || '').trim();
         if (!url) continue;
         const email = validEmail(row.Email) ? normEmail(row.Email) : '';
-        const p10 = normPhone(row['Mobile Phone'] || row.Phone);
-        const phoneE164 = validPhone10(p10) ? `+1${p10}` : '';
+        const lic = licenseKey(row['License Number']);
         const ors = [];
         if (email) ors.push(`preferred_email.eq.${enc(email)}`, `enriched_email.eq.${enc(email)}`);
-        if (phoneE164) ors.push(`preferred_phone.eq.${enc(phoneE164)}`);
+        if (lic) ors.push(`license_number.eq.${enc(lic)}`);
+        ors.push(...phoneKeys(row));
         if (!ors.length) continue;                 // no safe identifier — skip
         try {
             await sbPatch(`agents?or=(${ors.join(',')})&source_url=is.null`, { source_url: url });
