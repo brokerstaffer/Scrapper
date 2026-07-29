@@ -305,12 +305,70 @@ function setAcctMsg(text, isError) {
     m.classList.toggle('error', !!isError);
 }
 
+// --- Detect the MLS(s) of an account so the user can import only some of them ---
+$('detectMlsBtn').addEventListener('click', detectMls);
+
+async function detectMls() {
+    const email = $('acctEmail').value.trim();
+    const password = $('acctPassword').value;
+    if (!email || !password) { setAcctMsg('Enter the Courted email and password first.', true); return; }
+    const btn = $('detectMlsBtn');
+    const label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Detecting…';
+    setAcctMsg('Signing in and reading this account’s MLSs — a few seconds…');
+    try {
+        const r = await fetch('/api/courted/mls-list', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+        });
+        const d = await r.json();
+        if (!r.ok || d.error) throw new Error(d.error || 'request failed');
+        renderMlsPicker(d);
+        const n = (d.mls || []).length;
+        setAcctMsg(`Found ${n} MLS${n === 1 ? '' : 's'}. Tick the one(s) to import, or keep “Whole account”.`);
+    } catch (err) {
+        setAcctMsg('Detect failed: ' + err.message, true);
+    } finally {
+        btn.disabled = false; btn.textContent = label;
+    }
+}
+
+// Render the "whole account vs specific MLS(s)" picker. Whole account and the
+// per-MLS boxes are mutually exclusive; leaving it untouched = whole account.
+function renderMlsPicker(d) {
+    const picker = $('mlsPicker');
+    const total = (d.total || 0).toLocaleString();
+    const rows = (d.mls || []).map((m) =>
+        `<label class="chk small mls-row"><input type="checkbox" class="mls-opt" data-code="${escapeAttr(m.code)}" /> <b>${escapeHtml(m.name || m.code)}</b> <span class="hint">${escapeHtml(m.code)} · ${(m.count || 0).toLocaleString()} agents</span></label>`
+    ).join('');
+    picker.innerHTML =
+        '<div class="mls-head">Choose what to import from this account:</div>' +
+        `<label class="chk small mls-row"><input type="checkbox" id="mls-all" checked /> <b>Whole account</b> <span class="hint">${total} agents — everything</span></label>` +
+        (rows || '<div class="hint">No individual MLSs detected — import the whole account.</div>');
+    picker.style.display = '';
+
+    const all = $('mls-all');
+    const opts = [...picker.querySelectorAll('.mls-opt')];
+    all.addEventListener('change', () => { if (all.checked) opts.forEach((o) => { o.checked = false; }); });
+    opts.forEach((o) => o.addEventListener('change', () => {
+        if (o.checked) all.checked = false;
+        if (!opts.some((x) => x.checked)) all.checked = true; // never leave nothing selected
+    }));
+}
+
+// [] = whole account (picker absent, or "Whole account" ticked); else the codes.
+function getSelectedMlsCodes() {
+    const picker = $('mlsPicker');
+    if (!picker || picker.style.display === 'none') return [];
+    if ($('mls-all')?.checked) return [];
+    return [...picker.querySelectorAll('.mls-opt:checked')].map((c) => c.dataset.code).filter(Boolean);
+}
+
 async function addAccount() {
     const email = $('acctEmail').value.trim();
     const password = $('acctPassword').value;
-    const state = $('acctState').value.trim().toUpperCase();
     if (!email || !password) { setAcctMsg('Enter the Courted email and password.', true); return; }
-    if (state && !/^[A-Z]{2}$/.test(state)) { setAcctMsg('MLS state must be a 2-letter code (e.g. NV) — or leave it blank.', true); return; }
+    const mlsIds = getSelectedMlsCodes();
 
     $('addAcctBtn').disabled = true;
     setAcctMsg('Validating login & saving the account…');
@@ -330,7 +388,7 @@ async function addAccount() {
             await waitForAccounts(d.accountsExpected);
             setAcctMsg('Service is back up. Starting the sweep…');
         }
-        startAccountSweep(email, state);
+        startAccountSweep(email, mlsIds);
     } catch (err) {
         setAcctMsg('Failed: ' + err.message, true);
         $('addAcctBtn').disabled = false;
@@ -351,10 +409,11 @@ function waitForAccounts(expected) {
     });
 }
 
-function startAccountSweep(email, state) {
-    const body = state
-        ? { sources: ['courted'], courtedOnly: [email], courtedAllAgents: false, locations: [`state:${state}`] }
-        : { sources: ['courted'], courtedOnly: [email], courtedAllAgents: true, courtedBanded: true };
+function startAccountSweep(email, mlsIds) {
+    const codes = Array.isArray(mlsIds) ? mlsIds : [];
+    // Whole account, or one server-side-filtered sweep per selected MLS code.
+    const body = { sources: ['courted'], courtedOnly: [email], courtedAllAgents: true, courtedBanded: true };
+    if (codes.length) body.courtedMlsIds = codes;
 
     resetUi(['courted']);
     running = true;
@@ -373,7 +432,7 @@ function startAccountSweep(email, state) {
             $('addAcctBtn').disabled = false;
             $('stopAcctBtn').style.display = '';
             $('acctPassword').value = '';
-            setAcctMsg(`Sweep started ✓ for ${email}${state ? ' · ' + state : ''} — live progress in the Courted panel below.`);
+            setAcctMsg(`Sweep started ✓ for ${email}${codes.length ? ' · MLS ' + codes.join(', ') : ' · whole account'} — live progress in the Courted panel below.`);
             openStream(res.jobId);
         })
         .catch((err) => {

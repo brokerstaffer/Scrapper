@@ -35,9 +35,10 @@
                 </label>
                 <label class="field small">
                     <span>Target MLS <span class="hint">(optional)</span></span>
-                    <input type="text" id="acctState" maxlength="2" placeholder="e.g. NV — blank = whole account" />
+                    <button id="detectMlsBtn" class="ghost" type="button">Detect MLSs</button>
                 </label>
             </div>
+            <div class="mls-picker" id="mlsPicker" style="display:none"></div>
             <div class="add-actions">
                 <button id="addAcctBtn" class="primary">Add account &amp; start sweep</button>
                 <button id="stopAcctBtn" class="ghost danger" style="display:none">■ Stop sweep</button>

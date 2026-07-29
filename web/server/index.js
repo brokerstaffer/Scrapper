@@ -10,6 +10,8 @@ import { createJob, getJob, emit, subscribe, unsubscribe, abortJob } from './job
 import { runCourted, readCourtedAccounts } from './engines/courted.js';
 import { railwayEnabled, upsertVariables } from './railway.js';
 import { login as courtedLogin } from '../../courted/src/auth.js';
+import { buildSearchQuery, fetchSearchPage } from '../../courted/src/api.js';
+import { DEFAULT_STATUSES, sleep } from '../../courted/src/constants.js';
 import { runZillow } from './engines/zillow.js';
 import { runRealtor } from './engines/realtor.js';
 import { startEnrich, getEnrich, stopEnrich } from './engines/enrich.js';
@@ -91,6 +93,35 @@ app.post('/api/courted/account', async (req, res) => {
         return res.status(502).json({ error: `Saving to Railway failed: ${err.message}` });
     }
     res.json({ ok: true, slot, email, accountsExpected: existing.length + 1 });
+});
+
+// Detect the MLS(s) a Courted account can see, with an exact agent count per MLS,
+// so the UI can offer "import the whole account" OR "only these MLS(s)". Logs in
+// (which also validates the credentials), samples a few ordered pages to
+// enumerate the distinct MLS codes, then probes an exact per-code count via the
+// server-side mls_id=<CODE> filter. Read-only — nothing is saved, no agents are
+// scraped. Optionally gated by ADMIN_TOKEN (x-admin-token header).
+app.post('/api/courted/mls-list', async (req, res) => {
+    if (process.env.ADMIN_TOKEN && req.get('x-admin-token') !== process.env.ADMIN_TOKEN) {
+        return res.status(401).json({ error: 'unauthorized' });
+    }
+    const b = req.body || {};
+    const email = String(b.email || '').trim();
+    const password = String(b.password || '');
+    if (!email || !password) return res.status(400).json({ error: 'email and password are required.' });
+
+    let session;
+    try {
+        session = await courtedLogin(email, password);
+    } catch (err) {
+        return res.status(400).json({ error: `Courted login failed — check the credentials. (${err.message})` });
+    }
+    try {
+        const { total, mls } = await detectAccountMls(session);
+        res.json({ ok: true, email, total, mls });
+    } catch (err) {
+        res.status(502).json({ error: `Could not read the account's MLSs: ${err.message}` });
+    }
 });
 
 // --- F1: Import Profile URLs (enrichment) -----------------------------------
@@ -191,6 +222,10 @@ app.post('/api/search', (req, res) => {
         // Target specific accounts by email substring (re-run incomplete ones).
         courtedOnly: Array.isArray(b.courtedOnly)
             ? b.courtedOnly.map((s) => String(s).trim()).filter(Boolean) : [],
+        // Import only chosen MLS(s) of a multi-MLS account (server-side mls_id
+        // filter, one sweep per code). Empty = whole account.
+        courtedMlsIds: Array.isArray(b.courtedMlsIds)
+            ? b.courtedMlsIds.map((s) => String(s).trim()).filter(Boolean) : [],
         minSalesVolume: toInt(b.minSalesVolume, 0),
         // Zillow options (default: all pages up to Zillow's 25-page cap)
         zillowMaxPages: toInt(b.zillowMaxPages, 25),
@@ -286,6 +321,51 @@ app.listen(PORT, () => {
 
 // --- helpers ---
 function toInt(v, d) { const n = parseInt(v, 10); return Number.isNaN(n) ? d : n; }
+
+// Enumerate an account's MLSs. Sampling a few ordered pages (top/bottom by sales
+// volume + newest by tenure) surfaces the distinct MLS codes cheaply; the exact
+// count per code then comes from the server-side mls_id filter (the same filter
+// the sweep uses, so counts match what an import would pull). The MLS "code" is
+// the suffix of courted_mls_id (e.g. 629029835_MFRMLS → MFRMLS), which is what
+// mls_id=<CODE> expects. `total` is the unfiltered account size.
+async function detectAccountMls(session) {
+    const SAMPLE = 500;
+    const orders = [
+        { orderBy: 'ltm_sales_volume', orderDirection: 'desc' },
+        { orderBy: 'ltm_sales_volume', orderDirection: 'asc' },
+        { orderBy: 'agent_tenure', orderDirection: 'desc' },
+    ];
+    const names = new Map(); // code -> mls_short_name (display)
+    let total = 0;
+    for (const o of orders) {
+        const q = buildSearchQuery({
+            limit: SAMPLE, offset: 0, orderBy: o.orderBy, orderDirection: o.orderDirection,
+            statuses: DEFAULT_STATUSES, includeContactInfo: false,
+        });
+        const d = await fetchSearchPage(session, q);
+        if (Number.isFinite(d.count)) total = Math.max(total, d.count);
+        for (const r of (d.results || [])) {
+            const cmid = String(r.courted_mls_id || '');
+            const code = (cmid.includes('_') ? cmid.replace(/^[^_]*_/, '') : String(r.mls_id || '')).trim();
+            if (!code) continue;
+            const name = String(r.mls_short_name || '').trim();
+            if (!names.has(code) || (!names.get(code) && name)) names.set(code, name);
+        }
+        await sleep(400);
+    }
+    const mls = [];
+    for (const [code, name] of names) {
+        const q = buildSearchQuery({
+            limit: 1, offset: 0, statuses: DEFAULT_STATUSES, includeContactInfo: false,
+            extraParams: { mls_id: code },
+        });
+        const d = await fetchSearchPage(session, q);
+        mls.push({ code, name: name || code, count: Number.isFinite(d.count) ? d.count : 0 });
+        await sleep(400);
+    }
+    mls.sort((a, b) => b.count - a.count);
+    return { total, mls };
+}
 
 // Lowest unused Courted account slot: 1 = COURTED_EMAIL, then _2 … _20. 0 = full.
 function nextCourtedSlot() {

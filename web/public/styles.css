@@ -241,6 +241,19 @@ tbody:empty::after { content: ""; }
 }
 @media (max-width: 720px) { .add-grid { grid-template-columns: 1fr; } }
 .add-account .msg { margin-top: 10px; }
+.add-account #detectMlsBtn { width: 100%; }
+.mls-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 4px 0 14px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.02);
+}
+.mls-picker .mls-head { font-size: 12px; font-weight: 650; color: var(--muted); }
+.mls-picker .mls-row { justify-content: flex-start; }
 .add-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .ghost.danger { border-color: #c0392b; color: #e57373; }
 .ghost.danger:hover { background: rgba(192,57,43,0.12); }

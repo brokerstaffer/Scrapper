@@ -64,8 +64,12 @@ async function probeCount(session, { locationScope, locationValues, extraParams 
  * @param opts.log       optional logger
  * @param opts.delayMs   pause between probes (don't burst Courted)
  */
-export async function buildSegments(session, { safeMax = 90000, log = console, delayMs = 350 } = {}) {
+export async function buildSegments(session, { safeMax = 90000, log = console, delayMs = 350, extraParams = {} } = {}) {
     let probes = 0;
+    // `extraParams` (e.g. { mls_id: 'MFRMLS' }) scopes the WHOLE plan to one MLS:
+    // every probe, band and residual carries it, so the baseline and band counts
+    // describe just that MLS and the scraper only pages that MLS's agents.
+    const baseExtra = extraParams || {};
     const probe = async (f) => {
         probes += 1;
         if (probes > 1) await sleep(delayMs); // pace probes — don't burst Courted
@@ -73,12 +77,12 @@ export async function buildSegments(session, { safeMax = 90000, log = console, d
     };
 
     // How many agents does this account REALLY have? Don't trust one answer.
-    const baseline = await settleBaseline(probe, log);
+    const baseline = await settleBaseline(probe, log, baseExtra);
     log.info?.(`Planning against a baseline of ${baseline.toLocaleString()} agents.`);
 
     let segments = [];
     for (let attempt = 1; attempt <= 3; attempt += 1) {
-        segments = await planOnce(probe, safeMax, log);
+        segments = await planOnce(probe, safeMax, log, baseExtra);
         const est = segments.reduce((s, x) => s + x.count, 0);
         // Complete coverage sums to >= baseline (bands overlap slightly; the
         // scraper de-dupes). A short sum means probes returned garbage mid-plan.
@@ -93,7 +97,7 @@ export async function buildSegments(session, { safeMax = 90000, log = console, d
     // Still short after retries: keep the best plan but add an unfiltered
     // catch-all so nothing is silently skipped (paged with retry/skip; the
     // scraper's seen-set makes the overlap free).
-    segments.push({ label: 'all · residual catch-all', locationScope: '', locationValues: [], extraParams: {}, count: baseline });
+    segments.push({ label: 'all · residual catch-all', locationScope: '', locationValues: [], extraParams: { ...baseExtra }, count: baseline });
     log.warning?.('Coverage still short of baseline — added an unfiltered catch-all segment.');
     return segments;
 }
@@ -103,10 +107,10 @@ export async function buildSegments(session, { safeMax = 90000, log = console, d
  * Suspiciously small answers (< BASELINE_FLOOR) are re-probed with a cooldown —
  * they're almost always Courted throttling, not a genuinely tiny account.
  */
-async function settleBaseline(probe, log) {
+async function settleBaseline(probe, log, baseExtra = {}) {
     let prev = -1;
     for (let attempt = 1; attempt <= 6; attempt += 1) {
-        const c = await probe({ locationScope: '', locationValues: [], extraParams: {} });
+        const c = await probe({ locationScope: '', locationValues: [], extraParams: { ...baseExtra } });
         const agrees = prev >= 0 && Math.abs(c - prev) <= Math.max(100, prev * 0.02);
         if (agrees && (c >= BASELINE_FLOOR || attempt >= 4)) return Math.max(c, prev);
         if (prev >= 0 && !agrees) log.warning?.(`Baseline probe unstable (${prev.toLocaleString()} → ${c.toLocaleString()}) — re-probing…`);
@@ -118,7 +122,7 @@ async function settleBaseline(probe, log) {
 }
 
 /** One planning pass: returns the segment list (may be garbage if throttled — caller verifies vs baseline). */
-async function planOnce(probe, safeMax, log) {
+async function planOnce(probe, safeMax, log, baseExtra = {}) {
     const segments = [];
 
     const withVol = (base, min, max) => {
@@ -188,7 +192,7 @@ async function planOnce(probe, safeMax, log) {
         await splitVolume(base, lo, mid);
     };
 
-    const base = { label: 'all', locationScope: '', locationValues: [], extraParams: {} };
+    const base = { label: 'all', locationScope: '', locationValues: [], extraParams: { ...baseExtra } };
 
     // Open top band above VTOP (rare whales) — usually 0 or a handful.
     const topOpen = withVol(base, VTOP + 1, null);

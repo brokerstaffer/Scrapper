@@ -76,6 +76,11 @@ export async function runCourted(job) {
     const only = (Array.isArray(job.params.courtedOnly) ? job.params.courtedOnly : [])
         .map((s) => String(s).trim().toLowerCase()).filter(Boolean);
     if (only.length) accounts = accounts.filter((a) => only.some((o) => a.email.toLowerCase().includes(o)));
+    // Optional per-account MLS scoping: when the user picks specific MLS(s) of a
+    // multi-MLS account, run ONE server-side-filtered sweep per code
+    // (mls_id=<CODE>). Empty/absent = the whole account (unchanged behavior).
+    const mlsIds = (Array.isArray(job.params.courtedMlsIds) ? job.params.courtedMlsIds : [])
+        .map((s) => String(s).trim()).filter(Boolean);
     if (!accounts.length) {
         emit(job, 'source_error', { source, message: 'Courted credentials not set (COURTED_EMAIL / COURTED_PASSWORD in web/.env).' });
         engineFinished(job);
@@ -90,6 +95,7 @@ export async function runCourted(job) {
 
     const seen = new Set();   // cross-account de-dupe
     const allCourtedIds = new Set(); // every courted_mls_id this run touched (for the title stamp)
+    let firstSweepDone = false; // cool-off gate: skip the wait only before the very first sweep
     let pushed = 0;           // unique agents emitted
     let total = 0;            // sum of matched counts (rough, may double-count overlaps)
     const cap = courtedMax || 0;
@@ -126,6 +132,88 @@ export async function runCourted(job) {
         }
     };
 
+    // Shared page handlers — ONE instance reused across every account/MLS sweep so
+    // the cross-account de-dupe (`seen`) and the DB flush buffer are shared.
+    const shouldStop = () => job.aborted || reachedCap();
+    const onRecord = async (row) => {
+        if (reachedCap()) return;
+        const cid = String(row['Courted Agent ID'] || '').trim();
+        if (cid) allCourtedIds.add(cid); // record before dedupe so cross-account ids are all captured
+        const key = personKey(row);
+        if (key && seen.has(key)) return; // already seen on another account/MLS
+        if (key) seen.add(key);
+        emit(job, 'record', { source, row });
+        pushed += 1;
+        if (sendToDb) {
+            buffer.push(row);
+            if (buffer.length >= FLUSH_SIZE) await flush(); // backpressure
+        }
+    };
+    const onMeta = ({ total: t }) => {
+        total += t || 0;
+        emit(job, 'meta', { source, total });
+    };
+
+    // Run ONE sweep for one account, optionally scoped to a single MLS code via
+    // the server-side `mls_id=<CODE>` filter (mlsCode=null → whole account).
+    const runOneSweep = async (acc, tag, mlsCode) => {
+        const extraParams = mlsCode ? { mls_id: mlsCode } : {};
+        const scopeTag = mlsCode ? `${tag ? `${tag} · ` : ''}MLS ${mlsCode}` : tag;
+
+        // Banded full sweep: log in once, plan volume/state segments (each under
+        // the deep-offset wall) — scoped to the MLS when filtering — then hand
+        // them to the scraper.
+        let session = null;
+        let segments = null;
+        if (useBands) {
+            emit(job, 'progress', { source, status: 'running', message: `Planning segments — ${scopeTag || 'account'}…` });
+            session = await login(acc.email, acc.password);
+            segments = await buildSegments(session, {
+                safeMax: SEGMENT_MAX,
+                log,
+                delayMs: Number(process.env.COURTED_DELAY_MS) || 350,
+                extraParams,
+            });
+            emit(job, 'progress', { source, status: 'running', message: `${segments.length} segments planned — ${scopeTag || 'scraping'}…` });
+        }
+        await runScrape(
+            {
+                email: acc.email,
+                password: acc.password,
+                session,                  // reuse login from segment planning (null → scraper logs in)
+                segments,                 // null → flat offset sweep (non-banded)
+                locations: searchLocations,
+                extraParams,              // scopes location/flat sweeps to the MLS too
+                maxRecords: 0,            // cap is enforced across accounts below
+                maxRecordsPerLocation: 0,
+                minSalesVolume: minSalesVolume || 0,
+                enrichProfiles: Boolean(courtedEnrich),
+                // Pace between page/profile requests — raise COURTED_DELAY_MS for
+                // big full-account runs to stay well under any rate limit.
+                delayMs: Number(process.env.COURTED_DELAY_MS) || 350,
+            },
+            { log, shouldStop, onRecord, onMeta },
+        );
+
+        // Post-sweep role tagging: page this account's team-leader /
+        // managing-broker filters (gentle, serial) — scoped to the MLS when
+        // filtering — and PATCH the correct `title` on the agents we just touched.
+        // Best-effort; a tagging hiccup never fails the sweep.
+        if (stampTitles) {
+            try {
+                emit(job, 'progress', { source, status: 'running', message: `Tagging roles (Team Leader / Managing Broker) — ${scopeTag || 'account'}…` });
+                const roleSession = await login(acc.email, acc.password);
+                const roleMap = await collectRoleTitleMap(roleSession, { delayMs: Number(process.env.COURTED_DELAY_MS) || 500, log, extraParams });
+                const scoped = new Map();
+                for (const [id, title] of roleMap) if (allCourtedIds.has(id)) scoped.set(id, title);
+                const n = await stampCourtedTitles(scoped);
+                if (n) log.info(`Tagged ${n.toLocaleString()} role titles — ${scopeTag || 'account'}.`);
+            } catch (e) {
+                log.warning(`Role-title tagging skipped (${scopeTag || acc.email}): ${e.message}`);
+            }
+        }
+    };
+
     try {
         for (let i = 0; i < accounts.length; i += 1) {
             if (job.aborted || reachedCap()) break;
@@ -134,78 +222,18 @@ export async function runCourted(job) {
             emit(job, 'progress', { source, status: 'running', message: accounts.length > 1 ? `Signing in — ${tag}…` : 'Signing in…' });
 
             try {
-                // Banded full sweep: log in once, plan volume/state segments (each
-                // under the deep-offset wall), then hand them to the scraper.
-                let session = null;
-                let segments = null;
-                if (useBands) {
-                    // Cool off before probing a fresh account — planning right
-                    // after a heavy scrape is when Courted returns garbage counts.
-                    if (i > 0) await new Promise((r) => setTimeout(r, 20000));
-                    emit(job, 'progress', { source, status: 'running', message: `Planning segments — ${tag || 'account'}…` });
-                    session = await login(acc.email, acc.password);
-                    segments = await buildSegments(session, {
-                        safeMax: SEGMENT_MAX,
-                        log,
-                        delayMs: Number(process.env.COURTED_DELAY_MS) || 350,
-                    });
-                    emit(job, 'progress', { source, status: 'running', message: `${segments.length} segments planned — ${tag || 'scraping'}…` });
-                }
-                await runScrape(
-                    {
-                        email: acc.email,
-                        password: acc.password,
-                        session,                  // reuse login from segment planning (null → scraper logs in)
-                        segments,                 // null → flat offset sweep (non-banded)
-                        locations: searchLocations,
-                        maxRecords: 0,            // cap is enforced across accounts below
-                        maxRecordsPerLocation: 0,
-                        minSalesVolume: minSalesVolume || 0,
-                        enrichProfiles: Boolean(courtedEnrich),
-                        // Pace between page/profile requests — raise COURTED_DELAY_MS
-                        // for big full-account runs to stay well under any rate limit.
-                        delayMs: Number(process.env.COURTED_DELAY_MS) || 350,
-                    },
-                    {
-                        log,
-                        shouldStop: () => job.aborted || reachedCap(),
-                        onRecord: async (row) => {
-                            if (reachedCap()) return;
-                            const cid = String(row['Courted Agent ID'] || '').trim();
-                            if (cid) allCourtedIds.add(cid); // record before dedupe so cross-account ids are all captured
-                            const key = personKey(row);
-                            if (key && seen.has(key)) return; // already seen on another account
-                            if (key) seen.add(key);
-                            emit(job, 'record', { source, row });
-                            pushed += 1;
-                            if (sendToDb) {
-                                buffer.push(row);
-                                if (buffer.length >= FLUSH_SIZE) await flush(); // backpressure
-                            }
-                        },
-                        onMeta: ({ total: t }) => {
-                            total += t || 0;
-                            emit(job, 'meta', { source, total });
-                        },
-                    },
-                );
-
-                // Post-sweep role tagging: page this account's team-leader /
-                // managing-broker filters (gentle, serial) and PATCH the correct
-                // `title` on the agents we just touched. Best-effort — a tagging
-                // hiccup never fails the sweep. Only ids seen this run are written.
-                if (stampTitles) {
-                    try {
-                        emit(job, 'progress', { source, status: 'running', message: `Tagging roles (Team Leader / Managing Broker) — ${tag || 'account'}…` });
-                        const roleSession = await login(acc.email, acc.password);
-                        const roleMap = await collectRoleTitleMap(roleSession, { delayMs: Number(process.env.COURTED_DELAY_MS) || 500, log });
-                        const scoped = new Map();
-                        for (const [id, title] of roleMap) if (allCourtedIds.has(id)) scoped.set(id, title);
-                        const n = await stampCourtedTitles(scoped);
-                        if (n) log.info(`Tagged ${n.toLocaleString()} role titles — ${tag || 'account'}.`);
-                    } catch (e) {
-                        log.warning(`Role-title tagging skipped (${tag || acc.email}): ${e.message}`);
-                    }
+                // Whole account = a single sweep with no MLS filter; otherwise one
+                // server-side-filtered sweep per selected MLS code.
+                const codes = mlsIds.length ? mlsIds : [null];
+                for (const code of codes) {
+                    if (job.aborted || reachedCap()) break;
+                    // Cool off before planning any sweep except the very first of
+                    // the run — planning right after a heavy scrape is when Courted
+                    // returns garbage counts. Applies between accounts AND between
+                    // an account's MLS codes.
+                    if (useBands && firstSweepDone) await new Promise((r) => setTimeout(r, 20000));
+                    firstSweepDone = true;
+                    await runOneSweep(acc, tag, code);
                 }
             } catch (err) {
                 // One bad account shouldn't kill the whole source — log and move on.

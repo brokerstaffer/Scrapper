@@ -22,14 +22,16 @@ const LEAN = {
 // Page one role filter (at_type_includes=<value>) STRICTLY SERIAL with a polite
 // jittered delay between pages — slow on purpose so an account never looks like
 // a burst/scraper and never gets rate-limited.
-async function collectIds(session, value, { delayMs = 500, log } = {}) {
+async function collectIds(session, value, { delayMs = 500, log, extraParams = {} } = {}) {
     const ids = new Set();
     let offset = 0;
     let total = null;
     for (;;) {
         const q = buildSearchQuery({
             limit: PAGE, offset, statuses: DEFAULT_STATUSES, includeContactInfo: false,
-            extraParams: { ...LEAN, at_type_includes: value },
+            // extraParams (e.g. { mls_id }) scopes the role paging to one MLS so a
+            // single-MLS sweep doesn't page the whole account's leaders/brokers.
+            extraParams: { ...LEAN, ...extraParams, at_type_includes: value },
         });
         const d = await fetchSearchPage(session, q);
         if (total === null) total = Number.isFinite(d.count) ? d.count : 0;
