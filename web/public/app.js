@@ -333,13 +333,22 @@ async function detectMls() {
     }
 }
 
+// An MLS with no name whose code is a Courted-internal CTD_ bucket isn't a real
+// MLS — it's a custom/manually-added list inside Courted. Relabel it so it reads
+// clearly instead of showing a raw hex code.
+function mlsDisplayName(m) {
+    const name = String(m.name || '').trim();
+    if ((!name || name === m.code) && /^CTD_/i.test(m.code)) return 'Custom list (Courted)';
+    return name || m.code;
+}
+
 // Render the "whole account vs specific MLS(s)" picker. Whole account and the
 // per-MLS boxes are mutually exclusive; leaving it untouched = whole account.
 function renderMlsPicker(d) {
     const picker = $('mlsPicker');
     const total = (d.total || 0).toLocaleString();
     const rows = (d.mls || []).map((m) =>
-        `<label class="chk small mls-row"><input type="checkbox" class="mls-opt" data-code="${escapeAttr(m.code)}" /> <b>${escapeHtml(m.name || m.code)}</b> <span class="hint">${escapeHtml(m.code)} · ${(m.count || 0).toLocaleString()} agents</span></label>`
+        `<label class="chk small mls-row"><input type="checkbox" class="mls-opt" data-code="${escapeAttr(m.code)}" /> <b>${escapeHtml(mlsDisplayName(m))}</b> <span class="hint">${escapeHtml(m.code)} · ${(m.count || 0).toLocaleString()} agents</span></label>`
     ).join('');
     picker.innerHTML =
         '<div class="mls-head">Choose what to import from this account:</div>' +
@@ -442,6 +451,113 @@ function startAccountSweep(email, mlsIds) {
             $('searchBtn').textContent = 'Search';
             $('searchBtn').classList.remove('stopping');
         });
+}
+
+// --- MLS monitor: scan all accounts, diff against a saved baseline ----------
+// The baseline lives in this browser (localStorage). Scan → save baseline →
+// re-scan later to see MLSs added to / removed from each account.
+const MLS_BASELINE_KEY = 'mlsBaseline_v1';
+let mlsScanId = null;
+let mlsScanTimer = null;
+let mlsLastScan = null; // accounts[] from the latest completed scan (for "Save as baseline")
+
+$('mlsScanBtn').addEventListener('click', startMlsMonitorScan);
+$('mlsScanStopBtn').addEventListener('click', stopMlsMonitorScan);
+$('mlsBaselineBtn').addEventListener('click', saveMlsBaseline);
+showBaselineInfo();
+
+function setMlsScanMsg(t, isError) { const m = $('mlsScanMsg'); m.textContent = t || ''; m.classList.toggle('error', !!isError); }
+
+function loadMlsBaseline() {
+    try { return JSON.parse(localStorage.getItem(MLS_BASELINE_KEY) || 'null'); } catch { return null; }
+}
+function showBaselineInfo() {
+    const b = loadMlsBaseline();
+    $('mlsBaselineInfo').textContent = b ? `Baseline saved ${new Date(b.savedAt).toLocaleString()}` : 'No baseline yet — scan, then save one.';
+}
+// accounts[] → { email: { total, codes: { code: {name,count} } } }
+function indexScan(accounts) {
+    const out = {};
+    for (const a of (accounts || [])) {
+        if (a.error) continue; // don't baseline a failed account (would look "removed")
+        const codes = {};
+        for (const m of (a.mls || [])) codes[m.code] = { name: m.name, count: m.count };
+        out[a.email] = { total: a.total || 0, codes };
+    }
+    return out;
+}
+function saveMlsBaseline() {
+    if (!mlsLastScan) return;
+    localStorage.setItem(MLS_BASELINE_KEY, JSON.stringify({ savedAt: Date.now(), accounts: indexScan(mlsLastScan) }));
+    showBaselineInfo();
+    setMlsScanMsg('Baseline saved ✓ — re-scan later to see what changed.');
+    renderMlsScan({ status: 'done', done: mlsLastScan.length, total: mlsLastScan.length, accounts: mlsLastScan });
+}
+
+function startMlsMonitorScan() {
+    $('mlsScanBtn').disabled = true;
+    $('mlsBaselineBtn').disabled = true;
+    setMlsScanMsg('Starting scan — this logs into every saved account, ~1–3 min…');
+    $('mlsScanResults').innerHTML = '';
+    fetch('/api/courted/mls-scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+        .then((r) => r.json())
+        .then((d) => {
+            if (d.error) throw new Error(d.error);
+            mlsScanId = d.scanId;
+            $('mlsScanStopBtn').style.display = '';
+            pollMlsScan();
+        })
+        .catch((err) => { setMlsScanMsg('Scan failed to start: ' + err.message, true); $('mlsScanBtn').disabled = false; });
+}
+function stopMlsMonitorScan() {
+    if (!mlsScanId) return;
+    fetch(`/api/courted/mls-scan/${mlsScanId}/stop`, { method: 'POST' }).catch(() => {});
+    setMlsScanMsg('Stopping…');
+}
+function pollMlsScan() {
+    clearTimeout(mlsScanTimer);
+    fetch(`/api/courted/mls-scan/${mlsScanId}`, { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => {
+            if (d.error) throw new Error(d.error);
+            renderMlsScan(d);
+            if (d.status === 'running') { mlsScanTimer = setTimeout(pollMlsScan, 2000); return; }
+            mlsLastScan = d.accounts || [];
+            $('mlsScanBtn').disabled = false;
+            $('mlsScanStopBtn').style.display = 'none';
+            $('mlsBaselineBtn').disabled = false;
+            const b = loadMlsBaseline();
+            setMlsScanMsg(b ? `${d.message} Changes vs baseline are highlighted below.` : `${d.message} No baseline yet — click “Save as baseline”.`);
+        })
+        .catch((err) => {
+            setMlsScanMsg('Scan error: ' + err.message, true);
+            $('mlsScanBtn').disabled = false; $('mlsScanStopBtn').style.display = 'none';
+        });
+}
+function renderMlsScan(d) {
+    const base = loadMlsBaseline();
+    const baseAcc = (base && base.accounts) || {};
+    const parts = [`<div class="mls-scan-head">${d.done}/${d.total} account(s) scanned${d.status === 'running' ? ' — scanning…' : ''}</div>`];
+    for (const a of (d.accounts || [])) {
+        if (a.error) {
+            parts.push(`<div class="mls-acct"><div class="mls-acct-head">${escapeHtml(a.email)} <span class="mls-err">— ${escapeHtml(a.error)}</span></div></div>`);
+            continue;
+        }
+        const bcodes = (baseAcc[a.email] && baseAcc[a.email].codes) || null;
+        const curCodes = new Set((a.mls || []).map((m) => m.code));
+        const rows = (a.mls || []).map((m) => {
+            const isNew = bcodes && !(m.code in bcodes);
+            return `<div class="mls-line">${isNew ? '<span class="mls-badge add">+ added</span>' : ''}<b>${escapeHtml(mlsDisplayName(m))}</b> <span class="hint">${escapeHtml(m.code)} · ${(m.count || 0).toLocaleString()}</span></div>`;
+        });
+        if (bcodes) for (const code of Object.keys(bcodes)) {
+            if (!curCodes.has(code)) rows.push(`<div class="mls-line removed"><span class="mls-badge rem">− removed</span><b>${escapeHtml(mlsDisplayName({ code, name: bcodes[code].name }))}</b> <span class="hint">${escapeHtml(code)}</span></div>`);
+        }
+        const changed = bcodes && ([...curCodes].some((c) => !(c in bcodes)) || Object.keys(bcodes).some((c) => !curCodes.has(c)));
+        const n = (a.mls || []).length;
+        const meta = changed ? ' · <b class="chg">changed</b>' : (bcodes ? ' · no change' : '');
+        parts.push(`<div class="mls-acct${changed ? ' changed' : ''}"><div class="mls-acct-head">${escapeHtml(a.email)} <span class="hint">${(a.total || 0).toLocaleString()} agents · ${n} MLS${n === 1 ? '' : 's'}${meta}</span></div>${rows.join('')}</div>`);
+    }
+    $('mlsScanResults').innerHTML = parts.join('');
 }
 
 // --- F1: Import Profile URLs (enrichment) -----------------------------------

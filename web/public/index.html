@@ -46,6 +46,21 @@
             <div class="msg" id="acctMsg"></div>
         </section>
 
+        <section class="search-card mls-monitor" id="mls-monitor-card">
+            <div class="add-head">
+                <h2>🛰️ MLS monitor <span class="hint">added / removed</span></h2>
+                <p class="hint">Scan every saved Courted account to see which MLSs it can access. Save a <b>baseline</b>, then re-scan later to flag any MLS <b>added</b> or <b>removed</b> from an account. Read-only — nothing is imported.</p>
+            </div>
+            <div class="add-actions">
+                <button id="mlsScanBtn" class="primary">Scan all accounts</button>
+                <button id="mlsScanStopBtn" class="ghost danger" style="display:none">■ Stop</button>
+                <button id="mlsBaselineBtn" class="ghost" disabled>Save as baseline</button>
+                <span class="hint" id="mlsBaselineInfo"></span>
+            </div>
+            <div class="msg" id="mlsScanMsg"></div>
+            <div class="mls-scan-results" id="mlsScanResults"></div>
+        </section>
+
         <section class="search-card import-card" id="import-card">
             <div class="add-head">
                 <h2>📥 Import Profile URLs <span class="hint">enrichment</span></h2>

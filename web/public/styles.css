@@ -254,6 +254,18 @@ tbody:empty::after { content: ""; }
 }
 .mls-picker .mls-head { font-size: 12px; font-weight: 650; color: var(--muted); }
 .mls-picker .mls-row { justify-content: flex-start; }
+.mls-scan-results { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.mls-scan-head { font-size: 12px; color: var(--muted); }
+.mls-acct { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.mls-acct.changed { border-color: var(--accent); }
+.mls-acct-head { font-weight: 650; font-size: 13px; margin-bottom: 6px; }
+.mls-acct-head .chg { color: var(--accent); }
+.mls-line { font-size: 12px; padding: 2px 0; display: flex; align-items: center; gap: 8px; }
+.mls-line.removed b { color: #e57373; }
+.mls-badge { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 6px; white-space: nowrap; }
+.mls-badge.add { background: rgba(46,160,67,0.18); color: #4ac26b; }
+.mls-badge.rem { background: rgba(192,57,43,0.18); color: #e57373; }
+.mls-err { color: #e57373; }
 .add-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .ghost.danger { border-color: #c0392b; color: #e57373; }
 .ghost.danger:hover { background: rgba(192,57,43,0.12); }
