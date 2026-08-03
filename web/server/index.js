@@ -66,13 +66,40 @@ app.post('/api/courted/account', async (req, res) => {
     const password = String(b.password || '');
     if (!email || !password) return res.status(400).json({ error: 'email and password are required.' });
 
-    // Already configured? Skip the save; the caller can sweep it directly.
-    const existing = readCourtedAccounts().map((a) => a.email.toLowerCase());
-    if (existing.includes(email.toLowerCase())) {
-        return res.json({ ok: true, already: true, email, accountsExpected: existing.length });
+    const accounts = readCourtedAccounts();
+    const existingAcc = accounts.find((a) => a.email.toLowerCase() === email.toLowerCase());
+
+    // Already configured → treat this as a PASSWORD UPDATE. Validate the new login
+    // FIRST and only overwrite the stored password if it works, so a typo / stale
+    // entry can never replace a good password. (Previously the typed password was
+    // silently ignored here — which is how a stale stored password went unnoticed.)
+    if (existingAcc) {
+        if (existingAcc.password === password) {
+            return res.json({ ok: true, already: true, updated: false, email, accountsExpected: accounts.length });
+        }
+        try {
+            await courtedLogin(email, password);
+        } catch (err) {
+            return res.status(400).json({ error: `Courted login failed — the stored password was NOT changed. (${err.message})` });
+        }
+        if (!railwayEnabled()) {
+            return res.status(501).json({ error: 'Server can’t update the saved password — RAILWAY_API_TOKEN is not configured.' });
+        }
+        const slot = courtedSlotFor(email);
+        if (!slot) return res.status(500).json({ error: 'Could not locate the account slot to update.' });
+        const passKey = slot === 1 ? 'COURTED_PASSWORD' : `COURTED_PASSWORD_${slot}`;
+        try {
+            await upsertVariables({ [passKey]: password });
+        } catch (err) {
+            return res.status(502).json({ error: `Updating the password on Railway failed: ${err.message}` });
+        }
+        // Railway's write triggers a redeploy, but the running process keeps the old
+        // value until it restarts — so update it in-process too.
+        process.env[passKey] = password;
+        return res.json({ ok: true, already: true, updated: true, slot, email, accountsExpected: accounts.length });
     }
 
-    // Validate the login BEFORE saving anything to Railway.
+    // New account — validate the login BEFORE saving anything to Railway.
     try {
         await courtedLogin(email, password);
     } catch (err) {
@@ -93,7 +120,7 @@ app.post('/api/courted/account', async (req, res) => {
     } catch (err) {
         return res.status(502).json({ error: `Saving to Railway failed: ${err.message}` });
     }
-    res.json({ ok: true, slot, email, accountsExpected: existing.length + 1 });
+    res.json({ ok: true, slot, email, accountsExpected: accounts.length + 1 });
 });
 
 // Detect the MLS(s) a Courted account can see, with an exact agent count per MLS,
@@ -371,6 +398,16 @@ function toInt(v, d) { const n = parseInt(v, 10); return Number.isNaN(n) ? d : n
 function nextCourtedSlot() {
     if (!process.env.COURTED_EMAIL) return 1;
     for (let i = 2; i <= 20; i += 1) if (!process.env[`COURTED_EMAIL_${i}`]) return i;
+    return 0;
+}
+
+// Which slot holds this email? 1 = COURTED_EMAIL, then _2 … _20. 0 = not found.
+function courtedSlotFor(email) {
+    const want = String(email).trim().toLowerCase();
+    if (String(process.env.COURTED_EMAIL || '').trim().toLowerCase() === want) return 1;
+    for (let i = 2; i <= 20; i += 1) {
+        if (String(process.env[`COURTED_EMAIL_${i}`] || '').trim().toLowerCase() === want) return i;
+    }
     return 0;
 }
 

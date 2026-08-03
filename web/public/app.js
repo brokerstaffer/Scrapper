@@ -390,8 +390,17 @@ async function addAccount() {
         const d = await r.json();
         if (!r.ok || d.error) throw new Error(d.error || 'request failed');
 
+        // Existing account, password changed → new password validated & saved, but
+        // Railway is redeploying to apply it. Don't start the sweep on the current
+        // (about-to-restart) instance; ask the user to re-run once it's back.
+        if (d.already && d.updated) {
+            setAcctMsg(`Password updated ✓ for ${email}. The server is redeploying to apply it (~1–2 min). Once it’s back, click “Add account & start sweep” again to run the sweep.`);
+            $('addAcctBtn').disabled = false;
+            $('acctPassword').value = '';
+            return;
+        }
         if (d.already) {
-            setAcctMsg('Account already saved — starting the sweep…');
+            setAcctMsg('Account already saved (password unchanged) — starting the sweep…');
         } else {
             setAcctMsg(`Saved (account #${d.slot}). Restarting the service to load it — ~1–2 min…`);
             await waitForAccounts(d.accountsExpected);
