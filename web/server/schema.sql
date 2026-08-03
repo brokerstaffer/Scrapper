@@ -136,6 +136,18 @@ create table if not exists zillow_agents (
     updated_at timestamptz not null default now()
 );
 
+-- mls_monitor_state — server-side baseline for the automatic ("Option B") MLS
+-- watch: one row per Courted login account holding its last-seen MLS list. The
+-- scheduler diffs a fresh scan against this and alerts on any add / remove.
+-- Additive-only; touches no agent data.
+create table if not exists mls_monitor_state (
+    email text primary key,
+    mls jsonb not null default '[]'::jsonb,   -- [{ code, name, count }]
+    total integer not null default 0,
+    scanned_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
 -- realtor
 create table if not exists realtor_agents (
     name text,

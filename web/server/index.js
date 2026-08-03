@@ -9,6 +9,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { createJob, getJob, emit, subscribe, unsubscribe, abortJob } from './jobs.js';
 import { runCourted, readCourtedAccounts } from './engines/courted.js';
 import { startMlsScan, getMlsScan, stopMlsScan } from './engines/mls-scan.js';
+import { startMlsMonitor, runScan as runMlsMonitorScan } from './mls-monitor.js';
 import { railwayEnabled, upsertVariables } from './railway.js';
 import { login as courtedLogin } from '../../courted/src/auth.js';
 import { detectAccountMls } from '../../courted/src/mls.js';
@@ -149,6 +150,21 @@ app.get('/api/courted/mls-scan/:id', (req, res) => {
 app.post('/api/courted/mls-scan/:id/stop', (req, res) => {
     if (!stopMlsScan(req.params.id)) return res.status(404).json({ error: 'scan not found or already finished' });
     res.json({ ok: true });
+});
+
+// Automatic ("Option B") MLS monitor — run a full scan NOW: diff every account
+// against its server-side baseline, alert on add/remove or login failure, then
+// save the fresh baseline. Same code the scheduler runs; exposed so a change can
+// be verified on demand (and to seed the first baseline). Read-only vs Courted.
+app.post('/api/courted/mls-monitor/run', async (req, res) => {
+    if (process.env.ADMIN_TOKEN && req.get('x-admin-token') !== process.env.ADMIN_TOKEN) {
+        return res.status(401).json({ error: 'unauthorized' });
+    }
+    try {
+        res.json(await runMlsMonitorScan({ reason: 'manual' }));
+    } catch (err) {
+        res.status(502).json({ error: err.message });
+    }
 });
 
 // --- F1: Import Profile URLs (enrichment) -----------------------------------
@@ -343,7 +359,9 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`\n  Agent Search webapp → http://localhost:${PORT}\n`);
     console.log(`  Courted creds: ${readCourtedAccounts().length || 'NO'} account(s)`);
-    console.log(`  Unblocker:     ${unblockerProvider() || 'NONE — Zillow + realtor.com disabled'}  (Zillow + realtor.com)\n`);
+    console.log(`  Unblocker:     ${unblockerProvider() || 'NONE — Zillow + realtor.com disabled'}  (Zillow + realtor.com)`);
+    startMlsMonitor();   // no-op unless MLS_MONITOR_ENABLED=1
+    console.log('');
 });
 
 // --- helpers ---
