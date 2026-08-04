@@ -138,7 +138,7 @@ function formatAlert(changes, failures, reason) {
     return L.join('\n');
 }
 
-async function notifySlack(text) {
+export async function notifySlack(text) {
     const token = process.env.SLACK_BOT_TOKEN;
     const channel = process.env.SLACK_CHANNEL_ID;
     if (!token || !channel) {

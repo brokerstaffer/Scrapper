@@ -10,6 +10,7 @@ import { createJob, getJob, emit, subscribe, unsubscribe, abortJob } from './job
 import { runCourted, readCourtedAccounts } from './engines/courted.js';
 import { startMlsScan, getMlsScan, stopMlsScan } from './engines/mls-scan.js';
 import { startMlsMonitor, runScan as runMlsMonitorScan } from './mls-monitor.js';
+import { startRefresh, runRefreshOnce } from './refresh.js';
 import { railwayEnabled, upsertVariables } from './railway.js';
 import { login as courtedLogin } from '../../courted/src/auth.js';
 import { detectAccountMls } from '../../courted/src/mls.js';
@@ -189,6 +190,20 @@ app.post('/api/courted/mls-monitor/run', async (req, res) => {
     }
     try {
         res.json(await runMlsMonitorScan({ reason: 'manual' }));
+    } catch (err) {
+        res.status(502).json({ error: err.message });
+    }
+});
+
+// Kick the "15-day refresh" once, on demand (test / seed). Re-scrapes the
+// most-overdue account (or a specific one via {email}); resolves when the sweep
+// completes. Same code the scheduler runs. Additive-only — see refresh.js.
+app.post('/api/courted/refresh/run', async (req, res) => {
+    if (process.env.ADMIN_TOKEN && req.get('x-admin-token') !== process.env.ADMIN_TOKEN) {
+        return res.status(401).json({ error: 'unauthorized' });
+    }
+    try {
+        res.json(await runRefreshOnce({ email: (req.body && req.body.email) || undefined }));
     } catch (err) {
         res.status(502).json({ error: err.message });
     }
@@ -388,6 +403,7 @@ app.listen(PORT, () => {
     console.log(`  Courted creds: ${readCourtedAccounts().length || 'NO'} account(s)`);
     console.log(`  Unblocker:     ${unblockerProvider() || 'NONE — Zillow + realtor.com disabled'}  (Zillow + realtor.com)`);
     startMlsMonitor();   // no-op unless MLS_MONITOR_ENABLED=1
+    startRefresh();      // no-op unless REFRESH_ENABLED=1
     console.log('');
 });
 

@@ -148,6 +148,19 @@ create table if not exists mls_monitor_state (
     updated_at timestamptz not null default now()
 );
 
+-- refresh_state — progress store for the automatic ("15-day") refresh: one row
+-- per Courted login account holding when it was last fully re-scraped. The
+-- scheduler picks whichever account has gone longest without a refresh, so every
+-- account (and thus every agent it can see) is re-pulled within the window.
+-- Re-scraping ACCUMULATES (adds/updates, never deletes) — additive-only.
+create table if not exists refresh_state (
+    email text primary key,
+    last_refreshed_at timestamptz,
+    last_status text,                          -- 'ok' | 'error'
+    last_message text,
+    updated_at timestamptz not null default now()
+);
+
 -- realtor
 create table if not exists realtor_agents (
     name text,
